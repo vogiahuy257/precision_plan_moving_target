@@ -1,0 +1,19 @@
+[Unit]
+Description=SIYI GIMBALL CONTROLLER
+After=microxrce-agent.service 
+
+[Service]
+Type=simple
+User=pihuy
+WorkingDirectory=/home/pihuy/Precision-Landing
+ExecStart=/bin/bash /home/pihuy/Precision-Landing/services/run_gimbal_controller.sh
+Restart=always
+RestartSec=3
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+Environment=RMW_FASTRTPS_USE_SHM=0
+Environment=ROS_DOMAIN_ID=0
+Environment=HOME=/home/pihuy
+
+
+[Install]
+WantedBy=multi-user.target

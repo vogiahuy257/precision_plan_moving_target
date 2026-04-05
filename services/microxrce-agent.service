@@ -1,0 +1,16 @@
+[Unit]
+Description=Micro XRCE-DDS Agent (Serial PX4)
+After=network-online.target
+
+[Service]
+Type=simple
+User=pihuy
+Group=dialout
+WorkingDirectory=/home/pihuy/Micro-XRCE-DDS-Agent
+ExecStart=/usr/local/bin/MicroXRCEAgent serial --dev /dev/ttyAMA10 -b 921600
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

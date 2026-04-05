@@ -1,0 +1,12 @@
+[Unit]
+Description=Force eth0 to 10Mbps Full Duplex (SIYI Camera)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ethtool -s eth0 speed 10 duplex full autoneg off
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

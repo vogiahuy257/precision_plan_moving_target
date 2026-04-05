@@ -1,0 +1,21 @@
+[Unit]
+Description=Precision Landing ROS2 Node
+After=microxrce-agent.service target-pose-fusion.service gimbal-controller.service
+Wants=microxrce-agent.service target-pose-fusion.service gimbal-controller.service
+
+
+[Service]
+Type=simple
+User=pihuy
+WorkingDirectory=/home/pihuy/Precision-Landing
+ExecStart=/bin/bash /home/pihuy/Precision-Landing/services/run_precision_land.sh
+Restart=on-failure
+RestartSec=1
+
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+Environment=RMW_FASTRTPS_USE_SHM=0
+Environment=ROS_DOMAIN_ID=0
+Environment=HOME=/home/pihuy
+
+[Install]
+WantedBy=multi-user.target

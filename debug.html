@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PrecisionLand CSV Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b0c0f;
+      --text:#f2f4f8;
+      --muted:#aab2c0;
+      --border:rgba(255,255,255,.12);
+      --border2:rgba(255,255,255,.18);
+      --shadow: 0 12px 30px rgba(0,0,0,.35);
+      --radius:16px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1000px 600px at 20% 0%, rgba(255,255,255,.06), transparent 60%),
+                  radial-gradient(900px 500px at 100% 20%, rgba(255,255,255,.05), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+
+    header{
+      padding:18px 18px 10px;
+      display:flex; gap:14px; align-items:center; justify-content:space-between;
+      position:sticky; top:0; z-index:10;
+      background: linear-gradient(to bottom, rgba(11,12,15,.9), rgba(11,12,15,.65));
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--border);
+    }
+    .title h1{ margin:0; font-size:16px; font-weight:800; letter-spacing:.3px; }
+    .title p{ margin:4px 0 0; color:var(--muted); font-size:12px; }
+
+    .actions{ display:flex; gap:10px; align-items:center; }
+    button{
+      border:1px solid var(--border2);
+      background:transparent;
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      transition: transform .04s ease, background .15s ease;
+      font-weight:700;
+      font-size:12px;
+    }
+    button:hover{ background:rgba(255,255,255,.06); }
+    button:active{ transform: translateY(1px); }
+
+    .layout{
+      display:grid;
+      grid-template-columns: 380px 1fr;
+      gap:14px;
+      padding:14px 18px 18px;
+      align-items:start;
+    }
+    @media (max-width: 1050px){
+      .layout{ grid-template-columns:1fr; }
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card .head{
+      padding:14px 14px 10px;
+      display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
+      border-bottom:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.04), transparent);
+    }
+    .card .head h2{ margin:0; font-size:13px; font-weight:850; }
+    .card .head .sub{ margin-top:4px; font-size:12px; color:var(--muted); line-height:1.35; }
+    .card .body{ padding:12px 14px 14px; }
+
+    .badge{
+      font-size:11px;
+      padding:6px 8px;
+      border:1px solid var(--border2);
+      border-radius:999px;
+      opacity:.9;
+      white-space:nowrap;
+    }
+
+    .drop{
+      border:1px dashed rgba(255,255,255,.25);
+      border-radius:14px;
+      padding:14px;
+      background: rgba(255,255,255,.02);
+      min-height:120px;
+      display:flex; flex-direction:column; justify-content:center;
+      gap:8px; text-align:center;
+    }
+    .drop strong{ font-size:13px; }
+    .drop span{ font-size:12px; color:var(--muted); }
+    .drop.dragover{ border-color: rgba(255,255,255,.6); background: rgba(255,255,255,.06); }
+
+    .fileRow{
+      display:flex; gap:10px; align-items:center; justify-content:space-between;
+      padding:10px 10px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background: rgba(255,255,255,.02);
+      margin-top:10px;
+    }
+    .fileRow .meta{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .fileRow .name{
+      font-size:12px; font-weight:800;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:230px;
+    }
+    .fileRow .info{ font-size:11px; color:var(--muted); }
+
+    .control{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:10px;
+      background: rgba(255,255,255,.02);
+      margin-top:12px;
+    }
+    label{
+      display:flex; gap:8px; align-items:center;
+      font-size:12px; margin:8px 0;
+      user-select:none;
+    }
+    input[type="checkbox"]{ transform: translateY(1px); }
+    input[type="number"]{
+      width:100%;
+      padding:10px 10px;
+      border-radius:12px;
+      border:1px solid var(--border2);
+      background: rgba(0,0,0,.25);
+      color:var(--text);
+      outline:none;
+      font-size:12px;
+    }
+    .small{ font-size:11px; color:var(--muted); margin-top:6px; line-height:1.35; }
+    code{ color:#fff; opacity:.9; }
+
+    /* ===== FIX “kéo dài vô hạn” ở đây ===== */
+    .charts{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+    }
+    .chartCard{
+      height: clamp(240px, 24vh, 340px);  /* cố định chiều cao chart theo viewport */
+      display:flex;
+      flex-direction:column;
+    }
+    .chartTitle{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 14px 0;
+      gap:10px;
+    }
+    .chartTitle h3{ margin:0; font-size:13px; font-weight:900; }
+    .hint{
+      font-size:11px;
+      color:var(--muted);
+      border:1px solid var(--border);
+      padding:6px 8px;
+      border-radius:999px;
+      background: rgba(255,255,255,.02);
+      white-space:nowrap;
+    }
+    .chartWrap{
+      padding:10px 12px 14px;
+      flex: 1;              /* chiếm phần còn lại trong chartCard */
+      min-height: 0;        /* quan trọng để tránh phình */
+    }
+    canvas{
+      width:100% !important;
+      height:100% !important;
+      display:block;
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="title">
+    <h1>PrecisionLand CSV Viewer</h1>
+    <p>Kéo-thả CSV để xem: Error → Output → PID → XY trajectory (overlay nhiều file để so sánh)</p>
+  </div>
+  <div class="actions">
+    <button id="btnPick">Chọn file</button>
+    <button id="btnClear">Clear</button>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- LEFT -->
+  <section class="card">
+    <div class="head">
+      <div>
+        <h2>Dữ liệu</h2>
+        <div class="sub">Thả nhiều file để overlay. Click vào legend để ẩn/hiện từng đường.</div>
+      </div>
+      <div class="badge" id="loadedCount">0 file</div>
+    </div>
+    <div class="body">
+      <div id="drop" class="drop">
+        <strong>Thả file CSV vào đây</strong>
+        <span>hoặc bấm “Chọn file” (có thể chọn nhiều)</span>
+        <input id="fileInput" type="file" accept=".csv,text/csv" multiple style="display:none" />
+      </div>
+
+      <div id="fileList"></div>
+
+      <div class="control">
+        <div style="font-weight:900; font-size:12px;">Tùy chọn</div>
+        <label><input type="checkbox" id="chkDownsample" checked /> Downsample</label>
+
+        <div style="font-size:12px; font-weight:800; margin:8px 0 6px;">Max points / series</div>
+        <input type="number" id="numMaxPoints" min="200" max="50000" step="100" value="2500" />
+
+        <label><input type="checkbox" id="chkShowTag" checked /> Vẽ Tag trên XY</label>
+        <label><input type="checkbox" id="chkShowDrone" checked /> Vẽ Drone trên XY</label>
+
+        <div class="small" style="margin-top:10px;">
+          CSV kỳ vọng có: <code>t_sec, err_x, err_y, vx_out, vy_out, Xp, Xi, Xd, Yp, Yi, Yd, drone_x, drone_y, tag_x, tag_y</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT -->
+  <section class="charts">
+    <div class="card chartCard">
+      <div class="chartTitle">
+        <h3>Error</h3>
+        <div class="hint">err_x, err_y</div>
+      </div>
+      <div class="chartWrap"><canvas id="errChart"></canvas></div>
+    </div>
+
+    <div class="card chartCard">
+      <div class="chartTitle">
+        <h3>Velocity Output</h3>
+        <div class="hint">vx_out, vy_out</div>
+      </div>
+      <div class="chartWrap"><canvas id="velChart"></canvas></div>
+    </div>
+
+    <div class="card chartCard">
+      <div class="chartTitle">
+        <h3>PID Components</h3>
+        <div class="hint">Xp Xi Xd • Yp Yi Yd</div>
+      </div>
+      <div class="chartWrap"><canvas id="pidChart"></canvas></div>
+    </div>
+
+    <div class="card chartCard">
+      <div class="chartTitle">
+        <h3>XY Trajectory</h3>
+        <div class="hint">drone_x/y + tag_x/y</div>
+      </div>
+      <div class="chartWrap"><canvas id="xyChart"></canvas></div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* CSV parser (quotes supported) */
+function parseCSV(text){
+  const rows = [];
+  let row = [], field = "";
+  let i=0, inQuotes=false;
+
+  while(i < text.length){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i+=2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    } else {
+      if(c === '"'){ inQuotes = true; i++; continue; }
+      if(c === ','){ row.push(field); field=""; i++; continue; }
+      if(c === '\n'){
+        row.push(field); field="";
+        if(!(row.length===1 && row[0].trim()==="")) rows.push(row);
+        row=[]; i++; continue;
+      }
+      if(c === '\r'){ i++; continue; }
+      field += c; i++;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+
+const state = { files: [] };
+const grayscale = [
+  {stroke:"rgba(255,255,255,.92)", dash:[]},
+  {stroke:"rgba(255,255,255,.70)", dash:[6,4]},
+  {stroke:"rgba(255,255,255,.55)", dash:[2,3]},
+  {stroke:"rgba(255,255,255,.40)", dash:[10,6]},
+  {stroke:"rgba(255,255,255,.30)", dash:[1,6]},
+];
+
+const $ = (id)=>document.getElementById(id);
+
+/* UI wiring */
+const drop = $("drop");
+const fileInput = $("fileInput");
+$("btnPick").addEventListener("click", ()=> fileInput.click());
+fileInput.addEventListener("change", e => handleFiles([...e.target.files]));
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("dragover"); });
+drop.addEventListener("dragleave", ()=> drop.classList.remove("dragover"));
+drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("dragover"); handleFiles([...e.dataTransfer.files]); });
+$("btnClear").addEventListener("click", ()=>{
+  state.files = [];
+  renderFileList();
+  rebuildAllCharts();
+});
+
+/* Chart helpers */
+const commonGrid = { color:"rgba(255,255,255,.08)" };
+const commonTicks = { color:"rgba(255,255,255,.75)", font:{size:11, weight:"600"} };
+
+function createLineChart(canvasId, yLabel){
+  return new Chart($(canvasId), {
+    type:"line",
+    data:{ datasets:[] },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      interaction:{ mode:"index", intersect:false },
+      plugins:{
+        legend:{ labels:{ color:"rgba(255,255,255,.85)", boxWidth:10, boxHeight:10 } },
+        tooltip:{ callbacks:{ title:(items)=> items.length ? `t = ${items[0].parsed.x.toFixed(2)} s` : "" } }
+      },
+      scales:{
+        x:{ type:"linear", grid:commonGrid, ticks:commonTicks,
+            title:{ display:true, text:"t (s)", color:"rgba(255,255,255,.75)", font:{weight:"800"} } },
+        y:{ grid:commonGrid, ticks:commonTicks,
+            title:{ display:true, text:yLabel, color:"rgba(255,255,255,.75)", font:{weight:"800"} } }
+      }
+    }
+  });
+}
+
+const errChart = createLineChart("errChart","error");
+const velChart = createLineChart("velChart","velocity");
+const pidChart = createLineChart("pidChart","PID");
+
+const xyChart = new Chart($("xyChart"), {
+  type:"scatter",
+  data:{ datasets:[] },
+  options:{
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{
+      legend:{ labels:{ color:"rgba(255,255,255,.85)", boxWidth:10, boxHeight:10 } },
+      tooltip:{ callbacks:{ label:(ctx)=> `${ctx.dataset.label}: x=${ctx.parsed.x.toFixed(3)}, y=${ctx.parsed.y.toFixed(3)}` } }
+    },
+    scales:{
+      x:{ type:"linear", grid:commonGrid, ticks:commonTicks,
+          title:{ display:true, text:"x", color:"rgba(255,255,255,.75)", font:{weight:"800"} } },
+      y:{ type:"linear", grid:commonGrid, ticks:commonTicks,
+          title:{ display:true, text:"y", color:"rgba(255,255,255,.75)", font:{weight:"800"} } },
+    }
+  }
+});
+
+/* Downsample */
+function downsampleXY(xArr, yArr, maxPoints){
+  const n = Math.min(xArr.length, yArr.length);
+  if(n <= maxPoints){
+    const out = [];
+    for(let i=0;i<n;i++){
+      const x=xArr[i], y=yArr[i];
+      if(Number.isFinite(x) && Number.isFinite(y)) out.push({x,y});
+    }
+    return out;
+  }
+  const step = Math.ceil(n / maxPoints);
+  const out = [];
+  for(let i=0;i<n;i+=step){
+    const x=xArr[i], y=yArr[i];
+    if(Number.isFinite(x) && Number.isFinite(y)) out.push({x,y});
+  }
+  return out;
+}
+
+/* Load files */
+async function handleFiles(files){
+  const csvFiles = files.filter(f => f.name.toLowerCase().endsWith(".csv") || f.type.includes("csv") || f.type==="text/csv");
+  if(!csvFiles.length) return;
+
+  for(const file of csvFiles){
+    const text = await file.text();
+    const rows = parseCSV(text);
+    if(rows.length < 2) continue;
+
+    const header = rows[0].map(s => s.trim());
+    const dataRows = rows.slice(1);
+
+    const map = {};
+    header.forEach(c => map[c] = []);
+
+    for(const r of dataRows){
+      for(let i=0;i<header.length;i++){
+        const col = header[i];
+        const raw = (r[i] ?? "").trim();
+        if(col === "state") map[col].push(raw);
+        else map[col].push(raw==="" ? NaN : Number(raw));
+      }
+    }
+
+    // time axis normalized
+    let t = [];
+    if(map["t_sec"] && map["t_sec"].some(v=>Number.isFinite(v))){
+      const t0 = map["t_sec"].find(v=>Number.isFinite(v)) ?? map["t_sec"][0];
+      t = map["t_sec"].map(v=> Number.isFinite(v) ? (v - t0) : NaN);
+    } else if(map["dt_s"] && map["dt_s"].some(v=>Number.isFinite(v))){
+      let acc=0;
+      t = map["dt_s"].map(v => { acc += (Number.isFinite(v)?v:0); return acc; });
+      const t0 = t[0] ?? 0;
+      t = t.map(x=>x-t0);
+    } else {
+      t = map[header[0]].map((_,i)=>i);
+    }
+
+    state.files.push({
+      name:file.name,
+      data:map,
+      t,
+      rowsCount:dataRows.length
+    });
+  }
+
+  renderFileList();
+  rebuildAllCharts();
+}
+
+/* File list UI */
+function renderFileList(){
+  $("loadedCount").textContent = `${state.files.length} file`;
+  const list = $("fileList");
+  list.innerHTML = "";
+
+  state.files.forEach((f, idx)=>{
+    const t0 = f.t.length ? f.t[0] : 0;
+    const t1 = f.t.length ? f.t[f.t.length-1] : 0;
+
+    const row = document.createElement("div");
+    row.className = "fileRow";
+    row.innerHTML = `
+      <div class="meta">
+        <div class="name">${f.name}</div>
+        <div class="info">${f.rowsCount.toLocaleString()} rows • duration ~ ${(t1-t0).toFixed(2)} s</div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="badge">#${idx+1}</span>
+        <button data-remove="${idx}">Remove</button>
+      </div>
+    `;
+    row.querySelector("button[data-remove]").addEventListener("click", ()=>{
+      state.files.splice(idx,1);
+      renderFileList();
+      rebuildAllCharts();
+    });
+    list.appendChild(row);
+  });
+}
+
+/* Rebuild charts */
+function addSeries(chart, label, xArr, yArr, style, maxPoints){
+  const pts = downsampleXY(xArr, yArr, maxPoints);
+  chart.data.datasets.push({
+    label,
+    data: pts,
+    showLine:true,
+    pointRadius:0,
+    borderWidth:1.6,
+    borderColor: style.stroke,
+    borderDash: style.dash,
+    tension:0.15
+  });
+}
+
+function rebuildAllCharts(){
+  const useDown = $("chkDownsample").checked;
+  const maxPoints = Number($("numMaxPoints").value || 2500);
+  const limit = useDown ? maxPoints : 99999999;
+
+  errChart.data.datasets = [];
+  velChart.data.datasets = [];
+  pidChart.data.datasets = [];
+  xyChart.data.datasets  = [];
+
+  const showTag = $("chkShowTag").checked;
+  const showDrone = $("chkShowDrone").checked;
+
+  const pidCols = ["Xp","Xi","Xd","Yp","Yi","Yd"];
+
+  state.files.forEach((f, i)=>{
+    const style = grayscale[i % grayscale.length];
+
+    // Error
+    if(f.data.err_x) addSeries(errChart, `${f.name} • err_x`, f.t, f.data.err_x, style, limit);
+    if(f.data.err_y) addSeries(errChart, `${f.name} • err_y`, f.t, f.data.err_y, style, limit);
+
+    // Velocity
+    if(f.data.vx_out) addSeries(velChart, `${f.name} • vx_out`, f.t, f.data.vx_out, style, limit);
+    if(f.data.vy_out) addSeries(velChart, `${f.name} • vy_out`, f.t, f.data.vy_out, style, limit);
+
+    // PID
+    for(const c of pidCols){
+      if(f.data[c]) addSeries(pidChart, `${f.name} • ${c}`, f.t, f.data[c], style, limit);
+    }
+
+    // XY
+    if(showDrone && f.data.drone_x && f.data.drone_y){
+      const pts = downsampleXY(f.data.drone_x, f.data.drone_y, limit);
+      xyChart.data.datasets.push({
+        label: `${f.name} • drone`,
+        data: pts,
+        showLine:true,
+        pointRadius:0,
+        borderWidth:1.8,
+        borderColor: style.stroke,
+        borderDash: style.dash
+      });
+    }
+    if(showTag && f.data.tag_x && f.data.tag_y){
+      const pts = downsampleXY(f.data.tag_x, f.data.tag_y, limit);
+      xyChart.data.datasets.push({
+        label: `${f.name} • tag`,
+        data: pts,
+        showLine:true,
+        pointRadius:0,
+        borderWidth:1.2,
+        borderColor: "rgba(255,255,255,.45)",
+        borderDash:[2,4]
+      });
+    }
+  });
+
+  errChart.update();
+  velChart.update();
+  pidChart.update();
+  xyChart.update();
+}
+
+["chkDownsample","numMaxPoints","chkShowTag","chkShowDrone"].forEach(id=>{
+  $(id).addEventListener("change", rebuildAllCharts);
+});
+
+// first paint
+renderFileList();
+rebuildAllCharts();
+</script>
+</body>
+</html>
