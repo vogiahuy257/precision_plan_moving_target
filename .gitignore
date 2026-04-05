@@ -3,4 +3,4 @@ install/
 log/
 logs/
 .vscode
-src/
+src/*.zip

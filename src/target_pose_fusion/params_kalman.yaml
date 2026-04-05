@@ -1,0 +1,8 @@
+target_pose_fusion_node:
+  ros__parameters:
+    q_acc_x: 0.0121
+    q_acc_y: 0.0121
+    q_acc_z: 0.0121
+    r_pos_x: 0.008
+    r_pos_y: 0.008
+    r_pos_z: 0.006
