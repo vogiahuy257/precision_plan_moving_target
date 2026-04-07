@@ -8,6 +8,7 @@ add_compile_options(-Wall -Wextra -Wpedantic -Werror -Wno-unused-parameter)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(px4_msgs REQUIRED)
 
 # Gazebo
 find_package(gz-transport13 REQUIRED)
@@ -19,7 +20,11 @@ add_executable(tag_pose_visualizer
     tag_pose_visualizer.cpp
 )
 
-ament_target_dependencies(tag_pose_visualizer rclcpp geometry_msgs)
+ament_target_dependencies(tag_pose_visualizer
+  rclcpp
+  geometry_msgs
+  px4_msgs
+)
 
 target_link_libraries(tag_pose_visualizer
   gz-transport${GZ_TRANSPORT_VER}::core

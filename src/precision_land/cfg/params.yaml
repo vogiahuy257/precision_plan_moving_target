@@ -1,9 +1,29 @@
 precision_land:
   ros__parameters:
-    descent_vel: 0.6
-    vel_p_gain: 1.7
-    vel_i_gain: 0.0
-    max_velocity: 3.0
+    topics:
+      target_pose: "/KalmanFilter/target_pose_est_NED"
+      target_velocity: "/KalmanFilter/target_velocity_est_NED"
+      vehicle_land_detected: "/fmu/out/vehicle_land_detected"
+      vehicle_local_position: "/fmu/out/vehicle_local_position"
+      gimbal_command: "/gimbal/cmd/sequence"
+      gimbal_attitude: "/gimbal/state/attitude"
+
+    PID_deadband: 0.05
     target_timeout: 5.0
-    delta_position: 0.2
-    delta_velocity: 0.2
+
+    descent_kp_pid: 1.7
+    descent_ki_pid: 0.0
+    descent_kd_pid: 0.0
+    descent_max_velocity: 3.0
+    slew_acc: 2.5
+
+    land_zone_z: 0.5
+    descent_vel: 0.6
+
+    descent_gate_radius: 0.12
+    vmin: 0.12
+    vmax: 0.35
+
+    use_predictive_error: true
+    predictive_acc_gain: 1.0
+    prediction_dt_max: 0.3

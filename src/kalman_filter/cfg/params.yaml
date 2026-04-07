@@ -1,0 +1,24 @@
+kalman_filter_node:
+  ros__parameters:
+    topics:
+      input_target_pose: "/Aruco/target_pose_FRD"
+      reset_command: "/Aruco/target_state"
+      target_valid: "/target_valid"
+      vehicle_odometry: "/fmu/out/vehicle_odometry"
+      relative_position_raw: "/KalmanFilter/target_pose_NED"
+      relative_position_predicted: "/KalmanFilter/target_pose_est_NED"
+      relative_velocity: "/KalmanFilter/target_velocity_est_NED"
+
+    frame_id: "map"
+
+    q_acc_x: 0.0005
+    q_acc_y: 0.0005
+    q_acc_z: 0.0010
+
+    r_pos_x: 0.000025
+    r_pos_y: 0.000025
+    r_pos_z: 0.0040
+
+    cam_offset_x: 0.0
+    cam_offset_y: 0.0
+    cam_offset_z: -0.1

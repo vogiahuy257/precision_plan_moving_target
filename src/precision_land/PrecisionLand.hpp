@@ -1,48 +1,34 @@
 #pragma once
 
-#include <filesystem>
-#include <fstream>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <string>
 
-#include <rclcpp/rclcpp.hpp>
+#include <Eigen/Core>
+#include <Eigen/Geometry>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
 #include <px4_msgs/msg/vehicle_land_detected.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
-
 #include <px4_ros2/components/mode.hpp>
 #include <px4_ros2/odometry/attitude.hpp>
 #include <px4_ros2/odometry/local_position.hpp>
-#include <px4_ros2/setpoint_types/trajectory.hpp>
-
-#include <Eigen/Core>
-#include <Eigen/Geometry>
+#include <px4_ros2/control/setpoint_types/experimental/trajectory.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
 
 class PrecisionLand : public px4_ros2::ModeBase
 {
 public:
-	explicit PrecisionLand(rclcpp::Node& node);
+	explicit PrecisionLand(rclcpp::Node &node);
 
 	void onActivate() override;
 	void onDeactivate() override;
 	void updateSetpoint(float dt_s) override;
 
 private:
-	struct TargetState
-	{
-		Eigen::Vector3d position{Eigen::Vector3d::Zero()};
-		rclcpp::Time timestamp{0, 0, RCL_ROS_TIME};
-		bool valid() const
-		{
-			return std::isfinite(position.x()) &&
-			       std::isfinite(position.y()) &&
-			       std::isfinite(position.z()) &&
-			       timestamp.nanoseconds() > 0;
-		}
-	};
-
 	enum class State
 	{
 		Search,
@@ -50,66 +36,100 @@ private:
 		Finished
 	};
 
+	struct TargetWorldState
+	{
+		Eigen::Vector3d position{0.0, 0.0, 0.0};
+		Eigen::Vector3d velocity{0.0, 0.0, 0.0};
+
+		rclcpp::Time timestamp{0, 0, RCL_ROS_TIME};
+		rclcpp::Time velocityTimestamp{0, 0, RCL_ROS_TIME};
+
+		bool validPose{false};
+		bool validVelocity{false};
+	};
+
 	void loadParameters();
 
-	void targetRelativePositionCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
-	void targetRelativeVelocityCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
-	void vehicleLandDetectedCallback(const px4_msgs::msg::VehicleLandDetected::SharedPtr msg);
 	void vehicleLocalPositionCallback(const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg);
+	void vehicleLandDetectedCallback(const px4_msgs::msg::VehicleLandDetected::SharedPtr msg);
+	void gimbalAttCallback(const geometry_msgs::msg::Vector3::SharedPtr msg);
+	void targetPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+	void targetVelocityCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
 
-	void hover();
+	void Hover();
 
-	float applyDeadband(float value, float deadband) const;
-	float applySlew(float v_cmd, float v_prev, float a_lim, float dt_s) const;
+	Eigen::Vector2f predictFutureRelativeErrorQuadratic(
+		float errX,
+		float errY,
+		float targetVelX,
+		float targetVelY,
+		float predictionDt) const;
 
-	Eigen::Vector2f computeTrackVelocity(float dt_s);
-	float computeDescentVelocity(float relative_radius_xy) const;
+	float applySlew(
+		float commandVelocity,
+		float previousVelocity,
+		float accelLimit,
+		float dt_s) const;
+
+	Eigen::Vector2f pidVelocityXY(
+		float errPredX,
+		float errPredY,
+		float dt_s);
+
+	float computeDescentVelocity(float errX, float errY);
 
 	bool checkTargetTimeout() const;
-	bool isRelativeVelocityFresh() const;
-
-	std::string stateName(State s) const;
-	void switchToState(State s);
-
-	void logCsvFlight(
-		float dt_s,
-		float rel_pos_x,
-		float rel_pos_y,
-		float rel_pos_z,
-		float rel_vel_x,
-		float rel_vel_y,
-		float rel_vel_z,
-		float radius_xy,
-		float rel_speed_xy,
-		float vx_cmd_raw,
-		float vy_cmd_raw,
-		float vx_cmd_out,
-		float vy_cmd_out,
-		float vz_cmd,
-		bool allow_descent,
-		float drone_x,
-		float drone_y,
-		float drone_z,
-		float drone_vx,
-		float drone_vy,
-		float drone_vz);
-
-	std::string makeTimestampedCsvPath();
+	std::string stateName(State state) const;
+	void switchToState(State state);
 
 private:
-	rclcpp::Node& _node;
+	rclcpp::Node &_node;
 
 	std::shared_ptr<px4_ros2::TrajectorySetpointType> _trajectory_setpoint;
 	std::shared_ptr<px4_ros2::OdometryLocalPosition> _vehicle_local_position;
 	std::shared_ptr<px4_ros2::OdometryAttitude> _vehicle_attitude;
 
-	rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _target_relative_position_sub;
-	rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _target_relative_velocity_sub;
+	rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _target_pose_sub;
+	rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _target_velocity_sub;
 	rclcpp::Subscription<px4_msgs::msg::VehicleLandDetected>::SharedPtr _vehicle_land_detected_sub;
 	rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr _vehicle_local_pos_sub;
+	rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr _gimbal_sub;
 
-	TargetState _target_relative_position{};
-	TargetState _target_relative_velocity{};
+	rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr _debug_target_measurement_pub;
+	rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr _debug_target_current_pub;
+	rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr _debug_target_pred_pub;
+	rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr _debug_setpoint_velocity_pub;
+
+	rclcpp::Publisher<std_msgs::msg::String>::SharedPtr _gimbal_seq_pub;
+
+	std::string _targetPoseTopic;
+	std::string _targetVelocityTopic;
+	std::string _vehicleLandDetectedTopic;
+	std::string _vehicleLocalPositionTopic;
+	std::string _gimbalCommandTopic;
+	std::string _gimbalAttitudeTopic;
+
+	float _param_pid_deadband{0.05f};
+	float _param_target_timeout{2.0f};
+
+	float _param_descent_kp{1.0f};
+	float _param_descent_ki{0.0f};
+	float _param_descent_kd{0.0f};
+	float _param_descent_max_velocity{3.0f};
+	float _param_slew_acc{2.5f};
+
+	float _param_land_zone_z{0.5f};
+	float _param_descent_vel{0.5f};
+
+	float _param_descent_gate_radius{0.12f};
+	float _param_vmin{0.12f};
+	float _param_vmax{0.45f};
+
+	bool _param_use_predictive_error{true};
+	float _param_predictive_acc_gain{1.0f};
+	float _param_prediction_dt_max{0.3f};
+
+	TargetWorldState _targetWorld{};
 
 	State _state{State::Search};
 
@@ -117,38 +137,24 @@ private:
 	bool _target_lost_prev{false};
 	bool _land_detected{false};
 
+	bool _yawSpInit{false};
 	float _yaw_sp{0.0f};
-	bool _yaw_sp_init{false};
 
-	float _vx_filt{0.0f};
-	float _vy_filt{0.0f};
+	float _vxFilt{0.0f};
+	float _vyFilt{0.0f};
+	float _velXIntegral{0.0f};
+	float _velYIntegral{0.0f};
+	void resetXYController();
 
-	float z_dist_bottom{0.0f};
+	float _prevErrPredX{0.0f};
+	float _prevErrPredY{0.0f};
+	bool _prevErrPredValid{false};
+
 	float _approach_altitude{0.0f};
+	float z_dist_bottom{0.0f};
 
-	float _log_vx_cmd_raw{0.0f};
-	float _log_vy_cmd_raw{0.0f};
-	float _log_vx_out{0.0f};
-	float _log_vy_out{0.0f};
-
-	float _param_pid_deadband{0.05f};
-	float _param_target_timeout{5.0f};
-
-	float _param_descent_kp{1.5f};
-	float _param_descent_ki{0.0f};
-	float _param_descent_kd{0.0f};
-	float _param_descent_max_velocity{3.0f};
-	float _param_slew_acc{10.0f};
-
-	float _param_land_zone_z{1.0f};
-	float _param_descent_vel{0.4f};
-
-	float _param_match_position_threshold{0.25f};
-	float _param_match_velocity_threshold{0.20f};
-
-	bool _csv_enable{false};
-	std::ofstream _csv;
-	std::string _csv_path;
-	std::string _log_dir{"./log_precision_land"};
-	bool _csv_header_written{false};
+	float _gimbal_pitch_deg{0.0f};
+	bool _gimbal_ready{false};
+	bool _gimbal_valid{false};
+	Eigen::Quaterniond _q_gimbal{1.0, 0.0, 0.0, 0.0};
 };

@@ -119,10 +119,10 @@ def generate_launch_description():
             package='precision_land',
             executable='precision_land',
             name='precision_land',
-            output='screen',
-            parameters=[
-                PathJoinSubstitution([FindPackageShare('precision_land'), 'cfg', 'params.yaml'])
-            ]
+            output='screen'
+            # parameters=[
+            #     PathJoinSubstitution([FindPackageShare('precision_land'), 'cfg', 'params.yaml'])
+            # ]
         ),
         # Gazebo visualization node (simulation only)
         Node(
@@ -135,9 +135,9 @@ def generate_launch_description():
 
         # KalmanFilter node
         Node(
-            package='target_pose_fusion',
-            executable='target_pose_fusion_node',
-            name='target_pose_fusion',
+            package='kalman_filter',
+            executable='kalman_filter_node',
+            name='kalman_filter',
             output='screen'
         ),
     ])

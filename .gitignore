@@ -1,6 +1,7 @@
 build/
 install/
 log/
+log_precision_land/
 logs/
 .vscode
 src/*.zip
