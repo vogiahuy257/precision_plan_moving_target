@@ -15,6 +15,9 @@ kalman_filter_node:
     q_acc_y: 0.0005
     q_acc_z: 0.0010
 
+    q_bias_vx: 0.0002
+    q_bias_vy: 0.0002
+
     r_pos_x: 0.000025
     r_pos_y: 0.000025
     r_pos_z: 0.0040

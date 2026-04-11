@@ -1,8 +1,56 @@
 #include "ArucoTracker.hpp"
 #include <iomanip>
+#include <sstream>
 #include <px4_msgs/msg/vehicle_odometry.hpp>
+#include <std_msgs/msg/string.hpp>
 
 constexpr double MARKER_TIMEOUT_SEC = 5.0;
+
+namespace
+{
+void publishArucoTiming(
+    const rclcpp::Publisher<std_msgs::msg::String>::SharedPtr &pub,
+    double imageStampSec,
+    double rxNowSec,
+    double procStartSec,
+    double procEndSec,
+    double pubNowSec,
+    bool found)
+{
+    if (!pub)
+    {
+        return;
+    }
+
+    std_msgs::msg::String msg;
+    std::ostringstream ss;
+
+    const double rxWaitDt = rxNowSec - imageStampSec;
+    const double queueBeforeProcDt = procStartSec - rxNowSec;
+    const double processingDt = procEndSec - procStartSec;
+    const double sendDt = pubNowSec - procEndSec;
+    const double totalNodeDt = pubNowSec - imageStampSec;
+
+    ss << std::fixed << std::setprecision(6)
+       << "{"
+       << "\"node\":\"aruco\","
+       << "\"image_stamp\":" << imageStampSec << ","
+       << "\"rx_now\":" << rxNowSec << ","
+       << "\"proc_start\":" << procStartSec << ","
+       << "\"proc_end\":" << procEndSec << ","
+       << "\"pub_now\":" << pubNowSec << ","
+       << "\"rx_wait_dt\":" << rxWaitDt << ","
+       << "\"queue_before_proc_dt\":" << queueBeforeProcDt << ","
+       << "\"processing_dt\":" << processingDt << ","
+       << "\"send_dt\":" << sendDt << ","
+       << "\"total_node_dt\":" << totalNodeDt << ","
+       << "\"found\":" << (found ? 1 : 0)
+       << "}";
+
+    msg.data = ss.str();
+    pub->publish(msg);
+}
+}
 
 ArucoTrackerNode::ArucoTrackerNode()
     : Node("aruco_tracker_node")
@@ -32,8 +80,6 @@ ArucoTrackerNode::ArucoTrackerNode()
         camera_info_topic,
         std::string("/world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/camera_info"));
 
-    RCLCPP_INFO(get_logger(), "Sub: %s | %s", image_topic.c_str(), camera_info_topic.c_str());
-
     _image_sub = create_subscription<sensor_msgs::msg::Image>(
         image_topic,
         qos,
@@ -48,6 +94,11 @@ ArucoTrackerNode::ArucoTrackerNode()
     _image_pub = create_publisher<sensor_msgs::msg::Image>("/Aruco/image_proc", qos);
     _target_pose_pub = create_publisher<geometry_msgs::msg::PoseStamped>("/Aruco/target_pose_FRD", qos);
     _kalman_reset_pub = create_publisher<std_msgs::msg::String>("/Aruco/target_state", qos);
+
+    // Debug timing publisher
+    _debug_dt_pub = create_publisher<std_msgs::msg::String>(
+        "/debug_dt/aruco",
+        rclcpp::QoS(10).best_effort());
 }
 
 void ArucoTrackerNode::loadParameters()
@@ -94,8 +145,8 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
 
     try
     {
-        // Dùng cùng clock của node để đồng bộ thời gian với KalmanFilter
-        const rclcpp::Time nodeNow = now();
+        const rclcpp::Time rxNow = now();
+        const rclcpp::Time procStart = now();
 
         cv_bridge::CvImagePtr cv_ptr =
             cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
@@ -109,6 +160,8 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
             cv::aruco::drawDetectedMarkers(cv_ptr->image, corners, ids);
         }
 
+        const rclcpp::Time imageStamp = msg->header.stamp;
+        const double imageStampSec = imageStamp.seconds();
         bool found = false;
 
         for (size_t i = 0; i < ids.size(); ++i)
@@ -121,23 +174,17 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
             found = true;
 
             cv::Vec3d rvec, tvec;
-
             cv::solvePnP(_object_points, corners[i], _camera_matrix, _dist_coeffs, rvec, tvec);
             cv::drawFrameAxes(cv_ptr->image, _camera_matrix, _dist_coeffs, rvec, tvec, _param_marker_size);
 
             geometry_msgs::msg::PoseStamped pose_msg;
-
-            // Không copy nguyên stamp của image nữa
-            // Dùng time của node để KalmanFilter và ArucoTracker cùng hệ clock
-            pose_msg.header.stamp = nodeNow;
+            pose_msg.header.stamp = msg->header.stamp;
             pose_msg.header.frame_id = msg->header.frame_id;
 
             Eigen::Vector3d p_cam(tvec[0], tvec[1], tvec[2]);
-            Eigen::Vector3d p_cam_corrected = p_cam;
-
-            pose_msg.pose.position.x = p_cam_corrected.x();
-            pose_msg.pose.position.y = p_cam_corrected.y();
-            pose_msg.pose.position.z = p_cam_corrected.z();
+            pose_msg.pose.position.x = p_cam.x();
+            pose_msg.pose.position.y = p_cam.y();
+            pose_msg.pose.position.z = p_cam.z();
 
             cv::Mat rot_mat;
             cv::Rodrigues(rvec, rot_mat);
@@ -149,27 +196,52 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
                 q_marker_cv.y,
                 q_marker_cv.z);
 
-            Eigen::Quaterniond q_marker_corrected = q_marker;
-            q_marker_corrected.normalize();
+            q_marker.normalize();
 
-            pose_msg.pose.orientation.x = q_marker_corrected.x();
-            pose_msg.pose.orientation.y = q_marker_corrected.y();
-            pose_msg.pose.orientation.z = q_marker_corrected.z();
-            pose_msg.pose.orientation.w = q_marker_corrected.w();
-
-            _target_pose_pub->publish(pose_msg);
+            pose_msg.pose.orientation.x = q_marker.x();
+            pose_msg.pose.orientation.y = q_marker.y();
+            pose_msg.pose.orientation.z = q_marker.z();
+            pose_msg.pose.orientation.w = q_marker.w();
 
             annotate_image(cv_ptr, tvec);
 
+            const rclcpp::Time procEnd = now();
+            const rclcpp::Time pubNow = now();
+
+            publishArucoTiming(
+                _debug_dt_pub,
+                imageStampSec,
+                rxNow.seconds(),
+                procStart.seconds(),
+                procEnd.seconds(),
+                pubNow.seconds(),
+                true);
+
+            _target_pose_pub->publish(pose_msg);
+
             _has_valid_pose = true;
-            _last_seen_time = nodeNow;
+            _last_seen_time = pubNow;
             break;
         }
 
-        // Timeout reset cũng dùng cùng clock của node
+        if (!found)
+        {
+            const rclcpp::Time procEnd = now();
+            const rclcpp::Time pubNow = procEnd;
+
+            publishArucoTiming(
+                _debug_dt_pub,
+                imageStampSec,
+                rxNow.seconds(),
+                procStart.seconds(),
+                procEnd.seconds(),
+                pubNow.seconds(),
+                false);
+        }
+
         if (_has_valid_pose && !found)
         {
-            const rclcpp::Time currentTime = nodeNow;
+            const rclcpp::Time currentTime = now();
             const double dt = (currentTime - _last_seen_time).seconds();
 
             if (dt > MARKER_TIMEOUT_SEC)

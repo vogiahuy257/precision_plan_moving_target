@@ -26,4 +26,4 @@ precision_land:
 
     use_predictive_error: true
     predictive_acc_gain: 1.0
-    prediction_dt_max: 0.3
+    prediction_dt_max: 0.5

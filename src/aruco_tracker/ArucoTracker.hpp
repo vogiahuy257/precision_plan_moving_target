@@ -13,6 +13,10 @@
 #include <geometry_msgs/msg/vector3.hpp>
 #include <px4_msgs/msg/vehicle_odometry.hpp>
 #include <std_msgs/msg/string.hpp>
+
+// == debug ==
+#include <std_msgs/msg/string.hpp>
+// =================
 class ArucoTrackerNode : public rclcpp::Node
 {
 public:
@@ -57,5 +61,9 @@ private:
 		0.00,   // Y right
 		0.01    // Z down
 	);
+
+	// == debug ==
+	rclcpp::Publisher<std_msgs::msg::String>::SharedPtr _debug_dt_pub;
+	// =================
 
 };
