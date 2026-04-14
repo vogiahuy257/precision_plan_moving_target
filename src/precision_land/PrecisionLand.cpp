@@ -1,12 +1,15 @@
 #include "PrecisionLand.hpp"
 
-#include <px4_ros2/components/node_with_mode.hpp>
-#include <px4_ros2/utils/geometry.hpp>
-#include <Eigen/Core>
-#include <Eigen/Geometry>
+#include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
+
+#include <px4_ros2/components/node_with_mode.hpp>
+#include <px4_ros2/utils/geometry.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <px4_msgs/msg/vehicle_command.hpp>
+#include <px4_msgs/msg/vehicle_command_ack.hpp>
 
 namespace
 {
@@ -18,21 +21,21 @@ constexpr bool kEnableDebugOutput = true;
  *
  * Input:
  *     pub: publisher debug timing
- *     imageStampSec: stamp anh goc de gom end-to-end
+ *     imageStampSec: stamp ảnh gốc để gom end-to-end
  *     poseStampSec: stamp pose filtered sau Kalman
  *     velStampSec: stamp velocity filtered sau Kalman
- *     poseRxNowSec: thoi diem callback nhan pose
- *     velRxNowSec: thoi diem callback nhan velocity
- *     ctrlStartNowSec: thoi diem bat dau tinh dieu khien
- *     ctrlEndNowSec: thoi diem tinh dieu khien xong
- *     cmdPubNowSec: thoi diem gui setpoint di
+ *     poseRxNowSec: thời điểm callback nhận pose
+ *     velRxNowSec: thời điểm callback nhận velocity
+ *     ctrlStartNowSec: thời điểm bắt đầu tính điều khiển
+ *     ctrlEndNowSec: thời điểm tính điều khiển xong
+ *     cmdPubNowSec: thời điểm gửi setpoint đi
  *
  * Logic:
- *     - imageStampSec dung de cong end-to-end toan pipeline
- *     - poseStampSec/velStampSec dung de tinh tuoi du lieu con lai sau Kalman
+ *     - imageStampSec dùng để cộng end-to-end toàn pipeline
+ *     - poseStampSec/velStampSec dùng để tính tuổi dữ liệu còn lại sau Kalman
  *
  * Output:
- *     Publish JSON string len /debug_dt/precision_land
+ *     Publish JSON string lên /debug_dt/precision_land
  */
 void publishPrecisionLandTiming(
     const rclcpp::Publisher<std_msgs::msg::String>::SharedPtr &pub,
@@ -89,7 +92,7 @@ void publishPrecisionLandTiming(
     msg.data = ss.str();
     pub->publish(msg);
 }
-}
+} // namespace
 
 using namespace px4_ros2::literals;
 
@@ -148,6 +151,17 @@ PrecisionLand::PrecisionLand(rclcpp::Node &node)
             "/debug_dt/precision_land",
             rclcpp::QoS(10).best_effort());
 
+    _vehicle_command_pub =
+        _node.create_publisher<px4_msgs::msg::VehicleCommand>(
+            "/fmu/in/vehicle_command",
+            rclcpp::QoS(10).best_effort());
+
+    _vehicle_command_ack_sub =
+        _node.create_subscription<px4_msgs::msg::VehicleCommandAck>(
+            "/fmu/out/vehicle_command_ack",
+            rclcpp::QoS(10).best_effort(),
+            std::bind(&PrecisionLand::vehicleCommandAckCallback, this, std::placeholders::_1));
+
     modeRequirements().manual_control = false;
 }
 
@@ -163,8 +177,8 @@ void PrecisionLand::loadParameters()
     _node.declare_parameter<float>("PID_deadband", 0.05f);
     _node.declare_parameter<float>("target_timeout", 3.0f);
 
-    _node.declare_parameter<float>("descent_kp_pid", 0.6f);
-    _node.declare_parameter<float>("descent_ki_pid", 0.0f);
+    _node.declare_parameter<float>("descent_kp_pid", 0.9f);
+    _node.declare_parameter<float>("descent_ki_pid", 0.03f);
     _node.declare_parameter<float>("descent_kd_pid", 0.0f);
     _node.declare_parameter<float>("descent_max_velocity", 10.0f);
     _node.declare_parameter<float>("slew_acc", 18.0f);
@@ -175,10 +189,11 @@ void PrecisionLand::loadParameters()
     _node.declare_parameter<float>("descent_gate_radius", 0.3f);
     _node.declare_parameter<float>("vmin", 0.45f);
     _node.declare_parameter<float>("vmax", 0.8f);
+    _node.declare_parameter<float>("disarm_height", 0.06f);
 
     _node.declare_parameter<bool>("use_predictive_error", true);
     _node.declare_parameter<float>("prediction_dt_max", 0.75f);
-    _node.declare_parameter<float>("control_extra_lead_sec", 0.18f);
+    _node.declare_parameter<float>("control_extra_lead_sec", 0.25f);
 
     _node.declare_parameter<float>("predictive_acc_gain", 0.0f);
     _node.declare_parameter<float>("predictive_acc_lpf_alpha", 0.4f);
@@ -190,6 +205,8 @@ void PrecisionLand::loadParameters()
     _node.get_parameter("topics.vehicle_local_position", _vehicleLocalPositionTopic);
     _node.get_parameter("topics.gimbal_command", _gimbalCommandTopic);
     _node.get_parameter("topics.gimbal_attitude", _gimbalAttitudeTopic);
+
+    _node.get_parameter("disarm_height", _param_disarm_height);
 
     _node.get_parameter("PID_deadband", _param_pid_deadband);
     _node.get_parameter("target_timeout", _param_target_timeout);
@@ -214,11 +231,33 @@ void PrecisionLand::loadParameters()
     _node.get_parameter("predictive_acc_gain", _param_predictive_acc_gain);
     _node.get_parameter("predictive_acc_lpf_alpha", _param_predictive_acc_lpf_alpha);
     _node.get_parameter("predictive_acc_max", _param_predictive_acc_max);
+
+    precision_land::XYControllerParams xyParams;
+    xyParams.kp = _param_descent_kp;
+    xyParams.ki = _param_descent_ki;
+    xyParams.kd = _param_descent_kd;
+    xyParams.deadband = _param_pid_deadband;
+    xyParams.maxVelocity = _param_descent_max_velocity;
+    xyParams.slewAcc = _param_slew_acc;
+    _xyVelocityController.configure(xyParams);
+
+    precision_land::ZControllerParams zParams;
+    zParams.landZoneZ = _param_land_zone_z;
+    zParams.descentVel = _param_descent_vel;
+    zParams.descentGateRadius = _param_descent_gate_radius;
+    zParams.vmin = _param_vmin;
+    zParams.vmax = _param_vmax;
+    zParams.disarmHeight = _param_disarm_height;
+    _descentZController.configure(zParams);
 }
 
 void PrecisionLand::vehicleLocalPositionCallback(const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg)
 {
-    z_dist_bottom = msg->dist_bottom;
+    if (std::isfinite(msg->dist_bottom) && msg->dist_bottom > 0.0f)
+    {
+        z_dist_bottom = msg->dist_bottom;
+        _dist_bottom_valid = true;
+    }
 }
 
 void PrecisionLand::vehicleLandDetectedCallback(const px4_msgs::msg::VehicleLandDetected::SharedPtr msg)
@@ -289,21 +328,15 @@ void PrecisionLand::targetVelocityCallback(const geometry_msgs::msg::PoseStamped
 
 void PrecisionLand::onActivate()
 {
-    _vxFilt = 0.0f;
-    _vyFilt = 0.0f;
-    _velXIntegral = 0.0f;
-    _velYIntegral = 0.0f;
-
-    _prevErrPredX = 0.0f;
-    _prevErrPredY = 0.0f;
-    _prevErrPredValid = false;
-
     _prevVehicleVelX = 0.0f;
     _prevVehicleVelY = 0.0f;
     _vehicleAccXFilt = 0.0f;
     _vehicleAccYFilt = 0.0f;
     _prevVehicleVelValid = false;
 
+    _xyVelocityController.reset();
+    _disarm_sent = false;
+    _dist_bottom_valid = false;
     _search_started = true;
     _yawSpInit = false;
 
@@ -327,211 +360,25 @@ void PrecisionLand::onDeactivate()
 void PrecisionLand::updateSetpoint(float dt_s)
 {
     const bool targetLost = checkTargetTimeout();
-
-    if (targetLost && !_target_lost_prev)
-    {
-        RCLCPP_INFO(_node.get_logger(), "Target lost (state=%s)", stateName(_state).c_str());
-    }
-    else if (!targetLost && _target_lost_prev)
-    {
-        RCLCPP_INFO(_node.get_logger(), "Target acquired");
-    }
-    _target_lost_prev = targetLost;
+    updateTargetLostStatus(targetLost);
 
     switch (_state)
     {
     case State::Search:
     {
-        if (!targetLost && _targetWorld.validPose)
-        {
-            switchToState(State::Descend);
-            break;
-        }
-
-        Hover();
+        handleSearchState(targetLost);
         break;
     }
 
     case State::Descend:
     {
-        if (targetLost)
-        {
-            switchToState(State::Search);
-            break;
-        }
-
-        const rclcpp::Time ctrlStartNow = _node.now();
-
-        const Eigen::Vector3f dronePosition = _vehicle_local_position->positionNed();
-        const Eigen::Vector3f droneVelocity = _vehicle_local_position->velocityNed();
-        const Eigen::Vector2f vehicleAccelerationXY = estimateVehicleAccelerationXY(dt_s);
-
-        const Eigen::Vector3f targetPositionWorld(
-            static_cast<float>(_targetWorld.position.x()),
-            static_cast<float>(_targetWorld.position.y()),
-            static_cast<float>(_targetWorld.position.z()));
-
-        const bool hasTargetVelocity =
-            _param_use_predictive_error && _targetWorld.validVelocity;
-
-        Eigen::Vector3f targetVelocityWorld(0.0f, 0.0f, 0.0f);
-        if (hasTargetVelocity)
-        {
-            targetVelocityWorld.x() = static_cast<float>(_targetWorld.velocity.x());
-            targetVelocityWorld.y() = static_cast<float>(_targetWorld.velocity.y());
-            targetVelocityWorld.z() = static_cast<float>(_targetWorld.velocity.z());
-        }
-
-        const Eigen::Vector3f relativePositionWorld = targetPositionWorld - dronePosition;
-        const float errX = relativePositionWorld.x();
-        const float errY = relativePositionWorld.y();
-
-        float poseAgeSec = static_cast<float>((ctrlStartNow - _targetWorld.timestamp).seconds());
-        if (poseAgeSec < 0.0f)
-        {
-            poseAgeSec = 0.0f;
-        }
-
-        float velAgeSec = poseAgeSec;
-        if (_targetWorld.validVelocity)
-        {
-            velAgeSec = static_cast<float>((ctrlStartNow - _targetWorld.velocityTimestamp).seconds());
-            if (velAgeSec < 0.0f)
-            {
-                velAgeSec = 0.0f;
-            }
-        }
-
-        float leadDtSec = poseAgeSec;
-        if (hasTargetVelocity)
-        {
-            leadDtSec = std::max(poseAgeSec, velAgeSec);
-        }
-
-        // Bù tuổi dữ liệu + chu kỳ update controller + phần lead thêm
-        leadDtSec += std::max(dt_s, 0.0f);
-        leadDtSec += std::max(_param_control_extra_lead_sec, 0.0f);
-        leadDtSec = std::clamp(leadDtSec, 0.0f, _param_prediction_dt_max);
-
-        // -------------------------------------------------
-        // Dự đoán tương lai của target và drone
-        // -------------------------------------------------
-        Eigen::Vector3f targetFutureWorld = targetPositionWorld;
-        Eigen::Vector3f droneFutureWorld = dronePosition;
-
-        if (leadDtSec > 0.0f)
-        {
-            if (hasTargetVelocity)
-            {
-                targetFutureWorld += targetVelocityWorld * leadDtSec;
-            }
-
-            const float accGain = std::max(_param_predictive_acc_gain, 0.0f);
-
-            droneFutureWorld.x() +=
-                droneVelocity.x() * leadDtSec +
-                0.5f * accGain * vehicleAccelerationXY.x() * leadDtSec * leadDtSec;
-
-            droneFutureWorld.y() +=
-                droneVelocity.y() * leadDtSec +
-                0.5f * accGain * vehicleAccelerationXY.y() * leadDtSec * leadDtSec;
-        }
-
-        // Sai số điều khiển là sai số tương lai
-        Eigen::Vector2f errorForControl(
-            targetFutureWorld.x() - droneFutureWorld.x(),
-            targetFutureWorld.y() - droneFutureWorld.y());
-
-        _approach_altitude = std::abs(dronePosition.z());
-
-        // Feedback chỉ xử lý phần sai số còn lại
-        const Eigen::Vector2f velocityFeedback = pidVelocityXY(
-            errorForControl.x(),
-            errorForControl.y(),
-            dt_s);
-
-        // Feedforward vận tốc target
-        Eigen::Vector2f velocityCommand = velocityFeedback;
-        if (hasTargetVelocity)
-        {
-            velocityCommand.x() += targetVelocityWorld.x();
-            velocityCommand.y() += targetVelocityWorld.y();
-        }
-
-        velocityCommand.x() = std::clamp(
-            velocityCommand.x(),
-            -_param_descent_max_velocity,
-            _param_descent_max_velocity);
-
-        velocityCommand.y() = std::clamp(
-            velocityCommand.y(),
-            -_param_descent_max_velocity,
-            _param_descent_max_velocity);
-
-        // Slew giữ nguyên, nhưng đặt ở lệnh cuối cùng
-        _vxFilt = applySlew(velocityCommand.x(), _vxFilt, _param_slew_acc, dt_s);
-        _vyFilt = applySlew(velocityCommand.y(), _vyFilt, _param_slew_acc, dt_s);
-
-        Eigen::Vector2f velocityXY(
-            std::clamp(_vxFilt, -_param_descent_max_velocity, _param_descent_max_velocity),
-            std::clamp(_vyFilt, -_param_descent_max_velocity, _param_descent_max_velocity));
-
-        float vz = computeDescentVelocity(errX, errY);
-
-        if (!_yawSpInit)
-        {
-            _yaw_sp = px4_ros2::quaternionToYaw(_vehicle_attitude->attitude());
-            _yawSpInit = true;
-        }
-
-        geometry_msgs::msg::PoseStamped debugPredMsg;
-        debugPredMsg.header.stamp = ctrlStartNow;
-        debugPredMsg.header.frame_id = "map";
-        debugPredMsg.pose.position.x = targetFutureWorld.x();
-        debugPredMsg.pose.position.y = targetFutureWorld.y();
-        debugPredMsg.pose.position.z = targetFutureWorld.z();
-        debugPredMsg.pose.orientation.w = 1.0;
-        debugPredMsg.pose.orientation.x = 0.0;
-        debugPredMsg.pose.orientation.y = 0.0;
-        debugPredMsg.pose.orientation.z = 0.0;
-        _debug_target_pred_pub->publish(debugPredMsg);
-
-        const rclcpp::Time ctrlEndNow = _node.now();
-
-        _trajectory_setpoint->update(
-            Eigen::Vector3f(velocityXY.x(), velocityXY.y(), vz),
-            std::nullopt,
-            std::nullopt);
-
-        const rclcpp::Time cmdPubNow = _node.now();
-
-        publishPrecisionLandTiming(
-            _debug_dt_pub,
-            imageTimestamp.nanoseconds() != 0 ? imageTimestamp.seconds() : -1.0,
-            _targetWorld.timestamp.seconds(),
-            _targetWorld.validVelocity ? _targetWorld.velocityTimestamp.seconds() : -1.0,
-            _targetPoseRxNow.nanoseconds() != 0 ? _targetPoseRxNow.seconds() : -1.0,
-            _targetVelRxNow.nanoseconds() != 0 ? _targetVelRxNow.seconds() : -1.0,
-            ctrlStartNow.seconds(),
-            ctrlEndNow.seconds(),
-            cmdPubNow.seconds());
-
-        if (_land_detected)
-        {
-            switchToState(State::Finished);
-        }
+        handleDescendState(dt_s, targetLost);
         break;
     }
 
     case State::Finished:
     {
-        RCLCPP_WARN(_node.get_logger(), "[PL] Finished");
-
-        std_msgs::msg::String msg;
-        msg.data = "CENTER_LOOKUP_FOLLOW";
-        _gimbal_seq_pub->publish(msg);
-
-        ModeBase::completed(px4_ros2::Result::Success);
+        handleFinishedState();
         return;
     }
     }
@@ -570,116 +417,204 @@ Eigen::Vector2f PrecisionLand::estimateVehicleAccelerationXY(float dt_s)
     return Eigen::Vector2f(_vehicleAccXFilt, _vehicleAccYFilt);
 }
 
-Eigen::Vector2f PrecisionLand::predictFutureRelativeErrorQuadratic(
-    float errX,
-    float errY,
-    float relativeVelX,
-    float relativeVelY,
-    float vehicleAccX,
-    float vehicleAccY,
-    float predictionDt) const
+void PrecisionLand::updateTargetLostStatus(bool targetLost)
 {
-    const float dt = std::clamp(predictionDt, 0.0f, _param_prediction_dt_max);
+    if (targetLost && !_target_lost_prev)
+    {
+        RCLCPP_INFO(_node.get_logger(), "Target lost (state=%s)", stateName(_state).c_str());
+    }
+    else if (!targetLost && _target_lost_prev)
+    {
+        RCLCPP_INFO(_node.get_logger(), "Target acquired");
+    }
 
-    const float accGain = std::max(_param_predictive_acc_gain, 0.0f);
-
-    const float errDDotX = -accGain * vehicleAccX;
-    const float errDDotY = -accGain * vehicleAccY;
-
-    const float errPredX = errX + relativeVelX * dt + 0.5f * errDDotX * dt * dt;
-    const float errPredY = errY + relativeVelY * dt + 0.5f * errDDotY * dt * dt;
-
-    return Eigen::Vector2f(errPredX, errPredY);
+    _target_lost_prev = targetLost;
 }
 
-float PrecisionLand::applySlew(float commandVelocity, float previousVelocity, float accelLimit, float dt_s) const
+void PrecisionLand::handleSearchState(bool targetLost)
 {
-    const float dt = std::max(dt_s, 1e-3f);
-    const float maxDeltaVelocity = accelLimit * dt;
-    const float deltaVelocity = std::clamp(commandVelocity - previousVelocity, -maxDeltaVelocity, maxDeltaVelocity);
-    return previousVelocity + deltaVelocity;
+    if (!targetLost && _targetWorld.validPose)
+    {
+        switchToState(State::Descend);
+        return;
+    }
+
+    Hover();
 }
 
-Eigen::Vector2f PrecisionLand::pidVelocityXY(
-    float errPredX,
-    float errPredY,
-    float dt_s)
+void PrecisionLand::handleDescendState(float dt_s, bool targetLost)
 {
-    const float dt = std::max(dt_s, 1e-3f);
-
-    const float Xp = _param_descent_kp * errPredX;
-    const float Yp = _param_descent_kp * errPredY;
-
-    if (std::abs(errPredX) > _param_pid_deadband)
+    if (targetLost)
     {
-        _velXIntegral += errPredX * dt;
+        switchToState(State::Search);
+        return;
     }
 
-    if (std::abs(errPredY) > _param_pid_deadband)
+    const rclcpp::Time ctrlStartNow = _node.now();
+
+    const precision_land::PredictionInput predictionInput = buildPredictionInput(dt_s, ctrlStartNow);
+    const precision_land::PredictionOutput predictionOutput = _predictionModel.predict(predictionInput);
+
+    _approach_altitude = std::abs(predictionInput.vehicle.positionWorld.z());
+
+    precision_land::XYControllerInput xyInput;
+    xyInput.futureErrorXY = predictionOutput.futureErrorXY;
+    xyInput.targetVelocityXY = predictionInput.target.velocityWorld.head<2>();
+    xyInput.useTargetFeedforward = predictionInput.target.hasVelocity;
+    xyInput.dtSec = dt_s;
+
+    const precision_land::XYControllerOutput xyOutput = _xyVelocityController.update(xyInput);
+
+    precision_land::ZControllerOutput zOutput{};
+    float vz = 0.0f;
+
+    // ----- debug hien tai de tam nhu nay chua sua -----
+    _dist_bottom_valid = true;
+    z_dist_bottom = _approach_altitude;
+
+    if (_dist_bottom_valid)
     {
-        _velYIntegral += errPredY * dt;
+    precision_land::ZControllerInput zInput;
+    zInput.futureErrorXY = predictionOutput.futureErrorXY;
+    zInput.vehicleAltitudeAbs = std::abs(z_dist_bottom);
+
+        zOutput = _descentZController.computeCommand(zInput);
+        vz = zOutput.vzCommand;
+    }
+    else
+    {
+        vz = 0.0f;
     }
 
-    float Xi = 0.0f;
-    float Yi = 0.0f;
-
-    if (_param_descent_ki > 1e-6f)
+    if (!_yawSpInit)
     {
-        const float maxIntegral = 0.15f * _param_descent_max_velocity / _param_descent_ki;
-        _velXIntegral = std::clamp(_velXIntegral, -maxIntegral, maxIntegral);
-        _velYIntegral = std::clamp(_velYIntegral, -maxIntegral, maxIntegral);
-
-        Xi = _param_descent_ki * _velXIntegral;
-        Yi = _param_descent_ki * _velYIntegral;
+        _yaw_sp = px4_ros2::quaternionToYaw(_vehicle_attitude->attitude());
+        _yawSpInit = true;
     }
 
-    float Xd = 0.0f;
-    float Yd = 0.0f;
+    publishPredictedTargetDebug(ctrlStartNow, predictionOutput.targetFutureWorld);
 
-    if (_param_descent_kd > 1e-6f && _prevErrPredValid)
+    const rclcpp::Time ctrlEndNow = _node.now();
+
+    _trajectory_setpoint->update(
+        Eigen::Vector3f(xyOutput.velocitySpXY.x(), xyOutput.velocitySpXY.y(), vz),
+        std::nullopt,
+        std::nullopt);
+
+    const rclcpp::Time cmdPubNow = _node.now();
+    publishTimingDebug(ctrlStartNow, ctrlEndNow, cmdPubNow);
+
+    if (_dist_bottom_valid && zOutput.shouldDisarm )
     {
-        const float errPredDotX = (errPredX - _prevErrPredX) / dt;
-        const float errPredDotY = (errPredY - _prevErrPredY) / dt;
-
-        Xd = _param_descent_kd * errPredDotX;
-        Yd = _param_descent_kd * errPredDotY;
+        sendDisarmCommand();
     }
 
-    _prevErrPredX = errPredX;
-    _prevErrPredY = errPredY;
-    _prevErrPredValid = true;
-
-    float vxFb = Xp + Xi + Xd;
-    float vyFb = Yp + Yi + Yd;
-
-    vxFb = std::clamp(vxFb, -_param_descent_max_velocity, _param_descent_max_velocity);
-    vyFb = std::clamp(vyFb, -_param_descent_max_velocity, _param_descent_max_velocity);
-
-    return Eigen::Vector2f(vxFb, vyFb);
+    if (_land_detected)
+    {
+        switchToState(State::Finished);
+    }
 }
 
-float PrecisionLand::computeDescentVelocity(float errX, float errY)
+void PrecisionLand::handleFinishedState()
 {
-    const float z = std::abs(_vehicle_local_position->positionNed().z());
+    RCLCPP_WARN(_node.get_logger(), "[PL] Finished");
 
-    if (z < _param_land_zone_z)
+    std_msgs::msg::String msg;
+    msg.data = "CENTER_LOOKUP_FOLLOW";
+    _gimbal_seq_pub->publish(msg);
+
+    ModeBase::completed(px4_ros2::Result::Success);
+}
+
+float PrecisionLand::computeLeadTimeSec(float dt_s, const rclcpp::Time &ctrlStartNow) const
+{
+    float poseAgeSec = static_cast<float>((ctrlStartNow - _targetWorld.timestamp).seconds());
+    if (poseAgeSec < 0.0f)
     {
-        return std::abs(_param_descent_vel);
+        poseAgeSec = 0.0f;
     }
 
-    const float lateralError = std::sqrt(errX * errX + errY * errY);
-
-    if (lateralError >= _param_descent_gate_radius)
+    float velAgeSec = poseAgeSec;
+    if (_targetWorld.validVelocity)
     {
-        return 0.0f;
+        velAgeSec = static_cast<float>((ctrlStartNow - _targetWorld.velocityTimestamp).seconds());
+        if (velAgeSec < 0.0f)
+        {
+            velAgeSec = 0.0f;
+        }
     }
 
-    const float scale =
-        1.0f - (lateralError / std::max(_param_descent_gate_radius, 1e-6f));
+    float leadDtSec = poseAgeSec;
+    if (_param_use_predictive_error && _targetWorld.validVelocity)
+    {
+        leadDtSec = std::max(poseAgeSec, velAgeSec);
+    }
 
-    const float scaleClamped = std::clamp(scale, 0.0f, 1.0f);
+    leadDtSec += std::max(dt_s, 0.0f);
+    leadDtSec += std::max(_param_control_extra_lead_sec, 0.0f);
 
-    return _param_vmin + (_param_vmax - _param_vmin) * scaleClamped;
+    return std::clamp(leadDtSec, 0.0f, _param_prediction_dt_max);
+}
+
+precision_land::PredictionInput PrecisionLand::buildPredictionInput(float dt_s, const rclcpp::Time &ctrlStartNow)
+{
+    precision_land::PredictionInput input;
+
+    input.leadDtSec = computeLeadTimeSec(dt_s, ctrlStartNow);
+    input.predictiveAccGain = std::max(_param_predictive_acc_gain, 0.0f);
+
+    input.vehicle.positionWorld = _vehicle_local_position->positionNed();
+    input.vehicle.velocityWorld = _vehicle_local_position->velocityNed();
+    input.vehicle.accelerationXY = estimateVehicleAccelerationXY(dt_s);
+
+    input.target.positionWorld = Eigen::Vector3f(
+        static_cast<float>(_targetWorld.position.x()),
+        static_cast<float>(_targetWorld.position.y()),
+        static_cast<float>(_targetWorld.position.z()));
+
+    input.target.hasVelocity = _param_use_predictive_error && _targetWorld.validVelocity;
+    if (input.target.hasVelocity)
+    {
+        input.target.velocityWorld = Eigen::Vector3f(
+            static_cast<float>(_targetWorld.velocity.x()),
+            static_cast<float>(_targetWorld.velocity.y()),
+            static_cast<float>(_targetWorld.velocity.z()));
+    }
+
+    return input;
+}
+
+void PrecisionLand::publishPredictedTargetDebug(const rclcpp::Time &stamp, const Eigen::Vector3f &targetFutureWorld)
+{
+    geometry_msgs::msg::PoseStamped debugPredMsg;
+    debugPredMsg.header.stamp = stamp;
+    debugPredMsg.header.frame_id = "map";
+    debugPredMsg.pose.position.x = targetFutureWorld.x();
+    debugPredMsg.pose.position.y = targetFutureWorld.y();
+    debugPredMsg.pose.position.z = targetFutureWorld.z();
+    debugPredMsg.pose.orientation.w = 1.0;
+    debugPredMsg.pose.orientation.x = 0.0;
+    debugPredMsg.pose.orientation.y = 0.0;
+    debugPredMsg.pose.orientation.z = 0.0;
+
+    _debug_target_pred_pub->publish(debugPredMsg);
+}
+
+void PrecisionLand::publishTimingDebug(
+    const rclcpp::Time &ctrlStartNow,
+    const rclcpp::Time &ctrlEndNow,
+    const rclcpp::Time &cmdPubNow)
+{
+    publishPrecisionLandTiming(
+        _debug_dt_pub,
+        imageTimestamp.nanoseconds() != 0 ? imageTimestamp.seconds() : -1.0,
+        _targetWorld.timestamp.seconds(),
+        _targetWorld.validVelocity ? _targetWorld.velocityTimestamp.seconds() : -1.0,
+        _targetPoseRxNow.nanoseconds() != 0 ? _targetPoseRxNow.seconds() : -1.0,
+        _targetVelRxNow.nanoseconds() != 0 ? _targetVelRxNow.seconds() : -1.0,
+        ctrlStartNow.seconds(),
+        ctrlEndNow.seconds(),
+        cmdPubNow.seconds());
 }
 
 bool PrecisionLand::checkTargetTimeout() const
@@ -710,6 +645,81 @@ std::string PrecisionLand::stateName(State state) const
 void PrecisionLand::switchToState(State state)
 {
     _state = state;
+}
+
+/**
+ * Publish vehicle command tới PX4.
+ *
+ * Input:
+ *     command: mã lệnh PX4
+ *     param1: tham số 1 của lệnh
+ *     param2: tham số 2 của lệnh
+ *
+ * Logic:
+ *     đóng gói VehicleCommand và publish qua DDS bridge
+ *
+ * Output:
+ *     publish lên /fmu/in/vehicle_command
+ */
+void PrecisionLand::publishVehicleCommand(uint16_t command, float param1, float param2)
+{
+    px4_msgs::msg::VehicleCommand msg{};
+    msg.timestamp = _node.now().nanoseconds() / 1000;
+    msg.param1 = param1;
+    msg.param2 = param2;
+    msg.command = command;
+    msg.target_system = 1;
+    msg.target_component = 1;
+    msg.source_system = 1;
+    msg.source_component = 1;
+    msg.from_external = true;
+
+    _vehicle_command_pub->publish(msg);
+}
+
+/**
+ * Gửi lệnh disarm đúng 1 lần.
+ *
+ * Input:
+ *     không có
+ *
+ * Logic:
+ *     nếu chưa gửi thì gửi lệnh disarm tới PX4
+ *
+ * Output:
+ *     publish lệnh disarm
+ */
+void PrecisionLand::sendDisarmCommand()
+{
+    if (_disarm_sent)
+    {
+        return;
+    }
+
+    publishVehicleCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,0.0f,0.0f);
+
+    _disarm_sent = true;
+    RCLCPP_WARN(_node.get_logger(), "[PL] GUI LENH DISARM");
+}
+
+/**
+ * Callback nhận phản hồi command từ PX4.
+ *
+ * Input:
+ *     msg: phản hồi VehicleCommandAck
+ *
+ * Logic:
+ *     log kết quả phản hồi cho lệnh arm/disarm
+ *
+ * Output:
+ *     không có
+ */
+void PrecisionLand::vehicleCommandAckCallback(const px4_msgs::msg::VehicleCommandAck::SharedPtr msg)
+{
+    if (msg->command == px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM)
+    {
+        switchToState(State::Finished);
+    }
 }
 
 int main(int argc, char *argv[])

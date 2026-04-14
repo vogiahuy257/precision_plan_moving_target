@@ -9,9 +9,12 @@
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
 #include <px4_msgs/msg/vehicle_odometry.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
+
+#include "FrameTransformer.hpp"
 
 class KalmanFilterNode : public rclcpp::Node
 {
@@ -23,8 +26,8 @@ public:
      *     Khong co.
      *
      * Logic:
-     *     Khai bao parameter, doc parameter, tao subscriber/publisher
-     *     va khoi tao bo loc Kalman.
+     *     Khai bao parameter, doc parameter, tao subscriber/publisher,
+     *     khoi tao FrameTransformer va bo loc Kalman.
      *
      * Output:
      *     Khoi tao node san sang nhan/publish du lieu.
@@ -80,6 +83,36 @@ private:
      *     Bien noi bo duoc cap nhat theo parameter.
      */
     void loadParameters();
+
+    /**
+     * @brief Cau hinh doi tuong FrameTransformer tu parameter mount mode va camera offset.
+     *
+     * Input:
+     *     Khong co.
+     *
+     * Logic:
+     *     Chon preset belly_fixed_camera hoac belly_gimbal_camera,
+     *     sau do nap camera offset va dat body-from-mount mac dinh.
+     *
+     * Output:
+     *     FrameTransformer san sang de doi pose/orientation.
+     */
+    void setupFrameTransformer();
+
+    /**
+     * @brief Cap nhat trang thai UAV vao FrameTransformer.
+     *
+     * Input:
+     *     Khong co.
+     *
+     * Logic:
+     *     Dua position, velocity, orientation cua UAV vao transformer
+     *     de cac phep doi frame luon dung theo trang thai moi nhat.
+     *
+     * Output:
+     *     FrameTransformer duoc cap nhat vehicle state.
+     */
+    void updateTransformerVehicleState();
 
     /**
      * @brief Khoi tao cau truc Kalman filter.
@@ -151,12 +184,28 @@ private:
      *     msg: px4_msgs::msg::VehicleOdometry::SharedPtr
      *
      * Logic:
-     *     Doc quaternion, vi tri, van toc drone trong he NED va luu lai.
+     *     Doc quaternion, vi tri, van toc drone trong he NED,
+     *     luu lai va day sang FrameTransformer.
      *
      * Output:
      *     Cap nhat trang thai drone trong world/NED.
      */
     void vehicleOdometryCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msg);
+
+    /**
+     * @brief Callback nhan goc gimbal de cap nhat body-from-mount.
+     *
+     * Input:
+     *     msg: geometry_msgs::msg::Vector3::SharedPtr
+     *
+     * Logic:
+     *     Chi dung khi mount mode la belly_gimbal_camera.
+     *     Doc yaw pitch roll theo do va dua vao FrameTransformer.
+     *
+     * Output:
+     *     Cap nhat huong camera gan qua gimbal.
+     */
+    void gimbalAttitudeCallback(const geometry_msgs::msg::Vector3::SharedPtr msg);
 
     // =========================
     // Ham Kalman
@@ -240,28 +289,14 @@ private:
     // Chuyen he truc / orientation
     // =========================
     /**
-     * @brief Tao ma tran quay tu optical frame sang NED frame.
-     *
-     * Input:
-     *     Khong co.
-     *
-     * Logic:
-     *     Dinh nghia quy uoc truc optical -> NED dung trong he thong.
-     *
-     * Output:
-     *     Eigen::Matrix3d phep quay optical sang NED.
-     */
-    Eigen::Matrix3d opticalToNedRotation() const;
-
-    /**
      * @brief Chuyen vi tri target tu optical frame sang world/NED.
      *
      * Input:
      *     opticalPosition: Eigen::Vector3d
      *
      * Logic:
-     *     Doi truc optical sang NED, cong camera offset body,
-     *     sau do quay theo tu the drone va cong vi tri drone trong world.
+     *     Goi FrameTransformer de doi truc optical sang world/NED
+     *     theo mount mode, camera offset, gimbal va pose UAV hien tai.
      *
      * Output:
      *     Vi tri target trong world/NED.
@@ -276,8 +311,8 @@ private:
      *     quaternionMessage: geometry_msgs::msg::Quaternion
      *
      * Logic:
-     *     Chuan hoa quaternion dau vao, doi tu optical sang NED,
-     *     roi nhan voi quaternion cua drone de ra orientation trong world.
+     *     Chuan hoa quaternion dau vao roi dua qua FrameTransformer
+     *     de doi sang orientation trong world/NED.
      *
      * Output:
      *     Quaternion target trong world/NED.
@@ -340,6 +375,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr resetSub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr validSub_;
     rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr vehicleOdomSub_;
+    rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr gimbalAttitudeSub_;
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr targetPoseRawPub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr targetPoseFilteredPub_;
@@ -347,18 +383,20 @@ private:
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr debugDtPub_;
 
     // =========================
-    // Topic name
+    // Topic name / mode
     // =========================
     std::string inputTargetPoseTopic_;
     std::string resetCommandTopic_;
     std::string targetValidTopic_;
     std::string vehicleOdometryTopic_;
+    std::string gimbalAttitudeTopic_;
 
     std::string targetPoseRawTopic_;
     std::string targetPoseFilteredTopic_;
     std::string targetVelocityTopic_;
 
     std::string outputFrameId_;
+    std::string transformMountMode_;
 
     // =========================
     // Parameter Kalman
@@ -393,6 +431,7 @@ private:
     // Bien trang thai noi bo
     // =========================
     cv::KalmanFilter kf_;
+    frame_transform::FrameTransformer frameTransformer_;
 
     bool initialized_{false};
     bool vehicleOdomValid_{false};

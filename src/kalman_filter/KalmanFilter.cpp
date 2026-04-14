@@ -58,6 +58,7 @@ KalmanFilterNode::KalmanFilterNode()
 {
     declareParameters();
     loadParameters();
+    setupFrameTransformer();
 
     const auto subQos = rclcpp::QoS(1).best_effort();
     const auto pubQos = rclcpp::QoS(1).best_effort();
@@ -82,6 +83,11 @@ KalmanFilterNode::KalmanFilterNode()
         subQos,
         std::bind(&KalmanFilterNode::vehicleOdometryCallback, this, std::placeholders::_1));
 
+    gimbalAttitudeSub_ = create_subscription<geometry_msgs::msg::Vector3>(
+        gimbalAttitudeTopic_,
+        subQos,
+        std::bind(&KalmanFilterNode::gimbalAttitudeCallback, this, std::placeholders::_1));
+
     targetPoseRawPub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
         targetPoseRawTopic_,
         pubQos);
@@ -102,15 +108,17 @@ KalmanFilterNode::KalmanFilterNode()
 
     RCLCPP_INFO(
         get_logger(),
-        "Loaded topics | input_pose=%s, reset=%s, valid=%s, odom=%s, raw=%s, filtered=%s, vel=%s, frame_id=%s",
+        "Loaded topics | input_pose=%s, reset=%s, valid=%s, odom=%s, gimbal=%s, raw=%s, filtered=%s, vel=%s, frame_id=%s, transform_mode=%s",
         inputTargetPoseTopic_.c_str(),
         resetCommandTopic_.c_str(),
         targetValidTopic_.c_str(),
         vehicleOdometryTopic_.c_str(),
+        gimbalAttitudeTopic_.c_str(),
         targetPoseRawTopic_.c_str(),
         targetPoseFilteredTopic_.c_str(),
         targetVelocityTopic_.c_str(),
-        outputFrameId_.c_str());
+        outputFrameId_.c_str(),
+        transformMountMode_.c_str());
 
     RCLCPP_INFO(
         get_logger(),
@@ -142,16 +150,18 @@ void KalmanFilterNode::declareParameters()
     declare_parameter<std::string>("topics.reset_command", "/Aruco/target_state");
     declare_parameter<std::string>("topics.target_valid", "/target_valid");
     declare_parameter<std::string>("topics.vehicle_odometry", "/fmu/out/vehicle_odometry");
+    declare_parameter<std::string>("topics.gimbal_attitude", "/gimbal/state/attitude");
 
     declare_parameter<std::string>("topics.target_pose_raw", "/KalmanFilter/target_pose_NED");
     declare_parameter<std::string>("topics.target_pose_filtered", "/KalmanFilter/target_pose_est_NED");
     declare_parameter<std::string>("topics.target_velocity_filtered", "/KalmanFilter/target_velocity_est_NED");
 
     declare_parameter<std::string>("frame_id", "map");
+    declare_parameter<std::string>("transform.mount_mode", "belly_fixed_camera");
 
     declare_parameter<double>("q_acc_x", 0.02);
     declare_parameter<double>("q_acc_y", 0.02);
-    declare_parameter<double>("q_acc_z", 0.0010);
+    declare_parameter<double>("q_acc_z", 0.001);
 
     declare_parameter<double>("q_bias_vx", 0.0001);
     declare_parameter<double>("q_bias_vy", 0.0001);
@@ -160,8 +170,8 @@ void KalmanFilterNode::declareParameters()
     declare_parameter<double>("r_pos_y", 0.0008);
     declare_parameter<double>("r_pos_z", 0.0040);
 
-    declare_parameter<double>("r_vel_x", 0.2);
-    declare_parameter<double>("r_vel_y", 0.2);
+    declare_parameter<double>("r_vel_x", 0.32);
+    declare_parameter<double>("r_vel_y", 0.32);
 
     declare_parameter<double>("cam_offset_x", 0.0);
     declare_parameter<double>("cam_offset_y", 0.0);
@@ -171,9 +181,9 @@ void KalmanFilterNode::declareParameters()
     declare_parameter<double>("stale_measurement_threshold_sec", 0.2);
     declare_parameter<double>("small_negative_dt_tolerance_sec", 0.02);
 
-    declare_parameter<double>("bias_from_rel_vel_gain", 1.7);
-    declare_parameter<double>("bias_from_rel_pos_gain", 0.18);
-    declare_parameter<double>("bias_limit", 5.0);
+    declare_parameter<double>("bias_from_rel_vel_gain", 1.15);
+    declare_parameter<double>("bias_from_rel_pos_gain", 0.08);
+    declare_parameter<double>("bias_limit", 3.0);
 }
 
 void KalmanFilterNode::loadParameters()
@@ -182,12 +192,14 @@ void KalmanFilterNode::loadParameters()
     get_parameter("topics.reset_command", resetCommandTopic_);
     get_parameter("topics.target_valid", targetValidTopic_);
     get_parameter("topics.vehicle_odometry", vehicleOdometryTopic_);
+    get_parameter("topics.gimbal_attitude", gimbalAttitudeTopic_);
 
     get_parameter("topics.target_pose_raw", targetPoseRawTopic_);
     get_parameter("topics.target_pose_filtered", targetPoseFilteredTopic_);
     get_parameter("topics.target_velocity_filtered", targetVelocityTopic_);
 
     get_parameter("frame_id", outputFrameId_);
+    get_parameter("transform.mount_mode", transformMountMode_);
 
     get_parameter("q_acc_x", qAccX_);
     get_parameter("q_acc_y", qAccY_);
@@ -214,6 +226,70 @@ void KalmanFilterNode::loadParameters()
     get_parameter("bias_from_rel_vel_gain", biasFromRelVelGain_);
     get_parameter("bias_from_rel_pos_gain", biasFromRelPosGain_);
     get_parameter("bias_limit", biasLimit_);
+}
+
+void KalmanFilterNode::setupFrameTransformer()
+{
+    const Eigen::Vector3d cameraOffsetBody(
+        camOffsetX_,
+        camOffsetY_,
+        camOffsetZ_);
+
+    try
+    {
+        const frame_transform::MountMode mountMode =
+            frame_transform::FrameTransformer::parseMountMode(transformMountMode_);
+
+        frame_transform::Config config;
+        if (mountMode == frame_transform::MountMode::BellyGimbalCamera)
+        {
+            config = frame_transform::FrameTransformer::makeBellyGimbalCameraConfig(cameraOffsetBody);
+        }
+        else
+        {
+            config = frame_transform::FrameTransformer::makeBellyFixedCameraConfig(cameraOffsetBody);
+        }
+
+        frameTransformer_.setConfig(config);
+        frameTransformer_.setBodyFromMountQuaternion(Eigen::Quaterniond::Identity());
+    }
+    catch (const std::exception &exception)
+    {
+        RCLCPP_WARN(
+            get_logger(),
+            "Invalid transform.mount_mode=%s, fallback to belly_fixed_camera. reason=%s",
+            transformMountMode_.c_str(),
+            exception.what());
+
+        frameTransformer_.setConfig(
+            frame_transform::FrameTransformer::makeBellyFixedCameraConfig(cameraOffsetBody));
+        frameTransformer_.setBodyFromMountQuaternion(Eigen::Quaterniond::Identity());
+        transformMountMode_ = "belly_fixed_camera";
+    }
+}
+
+void KalmanFilterNode::updateTransformerVehicleState()
+{
+    frame_transform::VehicleState vehicleState;
+    vehicleState.worldFromBody = vehicleQned_;
+    vehicleState.positionWorld = vehiclePosNed_;
+    vehicleState.velocityWorld = vehicleVelNed_;
+    vehicleState.valid = vehicleOdomValid_;
+
+    frameTransformer_.setVehicleState(vehicleState);
+}
+
+void KalmanFilterNode::gimbalAttitudeCallback(const geometry_msgs::msg::Vector3::SharedPtr msg)
+{
+    if (transformMountMode_ != "belly_gimbal_camera")
+    {
+        return;
+    }
+
+    frameTransformer_.setBodyFromMountEulerDeg(
+        static_cast<double>(msg->x),
+        static_cast<double>(msg->y),
+        static_cast<double>(msg->z));
 }
 
 void KalmanFilterNode::initKalman()
@@ -291,6 +367,7 @@ void KalmanFilterNode::vehicleOdometryCallback(
     vehicleVelNed_.z() = static_cast<double>(msg->velocity[2]);
 
     vehicleOdomValid_ = true;
+    updateTransformerVehicleState();
 }
 
 void KalmanFilterNode::resetCallback(const std_msgs::msg::String::SharedPtr msg)
@@ -340,6 +417,7 @@ void KalmanFilterNode::poseCallback(const geometry_msgs::msg::PoseStamped::Share
     const rclcpp::Time procStart = now();
 
     lastOrientation_ = msg->pose.orientation;
+    updateTransformerVehicleState();
 
     const Eigen::Vector3d measurementOptical(
         msg->pose.position.x,
@@ -597,29 +675,10 @@ Eigen::Vector3d KalmanFilterNode::syncMeasurementPositionToCurrentTime(
     return measurementWorld + relativeVelocityEstimated * measurementAgeSec;
 }
 
-Eigen::Matrix3d KalmanFilterNode::opticalToNedRotation() const
-{
-    Eigen::Matrix3d rotation;
-    rotation << 0.0, -1.0, 0.0,
-                1.0,  0.0, 0.0,
-                0.0,  0.0, 1.0;
-    return rotation;
-}
-
 Eigen::Vector3d KalmanFilterNode::measurementOpticalToWorldPosition(
     const Eigen::Vector3d &opticalPosition) const
 {
-    const Eigen::Matrix3d opticalToNed = opticalToNedRotation();
-    const Eigen::Vector3d cameraPositionNed = opticalToNed * opticalPosition;
-
-    const Eigen::Vector3d cameraOffsetBody(
-        camOffsetX_,
-        camOffsetY_,
-        camOffsetZ_);
-
-    const Eigen::Matrix3d worldFromBody = vehicleQned_.toRotationMatrix();
-
-    return vehiclePosNed_ + worldFromBody * (cameraOffsetBody + cameraPositionNed);
+    return frameTransformer_.opticalPositionToWorld(opticalPosition);
 }
 
 Eigen::Quaterniond KalmanFilterNode::transformTagOrientationToWorld(
@@ -635,14 +694,12 @@ Eigen::Quaterniond KalmanFilterNode::transformTagOrientationToWorld(
     {
         targetOrientationOptical.normalize();
     }
+    else
+    {
+        targetOrientationOptical.setIdentity();
+    }
 
-    const Eigen::Quaterniond opticalToNedQuaternion(opticalToNedRotation());
-
-    Eigen::Quaterniond targetOrientationWorld =
-        vehicleQned_ * opticalToNedQuaternion * targetOrientationOptical;
-
-    targetOrientationWorld.normalize();
-    return targetOrientationWorld;
+    return frameTransformer_.opticalOrientationToWorld(targetOrientationOptical);
 }
 
 void KalmanFilterNode::publishEstimatedState(const rclcpp::Time &publishTimestamp)

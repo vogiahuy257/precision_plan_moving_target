@@ -25,3 +25,5 @@ kalman_filter_node:
     cam_offset_x: 0.0
     cam_offset_y: 0.0
     cam_offset_z: -0.1
+
+    transform.mount_mode: "belly_fixed_camera"

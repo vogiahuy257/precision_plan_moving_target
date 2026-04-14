@@ -17,6 +17,7 @@ find_package(OpenCV REQUIRED)
 # ===== Node =====
 add_executable(kalman_filter_node
     KalmanFilter.cpp
+    FrameTransformer.cpp
 )
 
 # include current folder (.hpp)

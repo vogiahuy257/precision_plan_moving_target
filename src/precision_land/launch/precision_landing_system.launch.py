@@ -93,8 +93,8 @@ def generate_launch_description():
             name='precision_land',
             output='screen',
             parameters=[
-                sim_time
-                # PathJoinSubstitution([FindPackageShare('precision_land'), 'cfg', 'params.yaml'])
+                sim_time,
+                PathJoinSubstitution([FindPackageShare('precision_land'), 'cfg', 'params.yaml'])
             ]
         ),
 

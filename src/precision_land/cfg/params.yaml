@@ -9,21 +9,26 @@ precision_land:
       gimbal_attitude: "/gimbal/state/attitude"
 
     PID_deadband: 0.05
-    target_timeout: 5.0
+    target_timeout: 3.0
 
-    descent_kp_pid: 1.7
-    descent_ki_pid: 0.0
+    descent_kp_pid: 0.9
+    descent_ki_pid: 0.01
     descent_kd_pid: 0.0
-    descent_max_velocity: 3.0
-    slew_acc: 2.5
+    descent_max_velocity: 10.0
+    slew_acc: 10.0
 
     land_zone_z: 0.5
-    descent_vel: 0.6
+    descent_vel: 0.5
 
-    descent_gate_radius: 0.12
-    vmin: 0.12
-    vmax: 0.35
+    descent_gate_radius: 0.3
+    vmin: 0.45
+    vmax: 0.8
+    disarm_height: 0.06
 
     use_predictive_error: true
-    predictive_acc_gain: 1.0
-    prediction_dt_max: 0.5
+    prediction_dt_max: 0.75
+    control_extra_lead_sec: 0.25
+
+    predictive_acc_gain: 0.0
+    predictive_acc_lpf_alpha: 0.4
+    predictive_acc_max: 4.0
