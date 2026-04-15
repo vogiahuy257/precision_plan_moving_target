@@ -301,12 +301,8 @@
               <div id="velocityPlot" class="plot"></div>
             </div>
             <div class="card">
-              <h3 class="cardTitle">PID vs Feedforward vs Final Setpoint</h3>
-              <div id="pidPlot" class="plot"></div>
-            </div>
-            <div class="card">
-              <h3 class="cardTitle">Error vs Future Error</h3>
-              <div id="errorPlot" class="plot"></div>
+              <h3 class="cardTitle">Controller vs Error (Single Plot)</h3>
+              <div id="controllerErrorMergedPlot" class="plot"></div>
             </div>
             <div class="card">
               <h3 class="cardTitle">Altitude / Dist Bottom / Final SP Z / Disarm / Land Detected</h3>
@@ -443,7 +439,7 @@
 
     function clearPlots() {
       [
-        "trajectoryPlot", "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "altitudePlot",
+        "trajectoryPlot", "kalmanPlot", "velocityPlot", "controllerErrorMergedPlot", "altitudePlot",
         "bottleneckPlot", "cumulativePlot"
       ].forEach((id) => Plotly.purge(id));
     }
@@ -602,8 +598,7 @@
       renderTrajectoryPlot();
       renderKalmanPlot();
       renderVelocityPlot();
-      renderPidPlot();
-      renderErrorPlot();
+      renderControllerErrorMergedPlot();
       renderAltitudePlot();
     }
 
@@ -691,7 +686,7 @@
       }, { responsive: true });
     }
 
-    function renderPidPlot() {
+    function renderControllerErrorMergedPlot() {
       const rows = appState.filteredControllerRows;
       const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
 
@@ -700,31 +695,43 @@
         pid_plus_ff: Number(row[`pid_out_${axis}`]) + Number(row[`ff_${axis}`])
       }));
 
-      Plotly.newPlot("pidPlot", [
-        makeLineTrace(rows, "timeRel", `pid_out_${axis}`, `pid_out_${axis}`),
-        makeLineTrace(rows, "timeRel", `ff_${axis}`, `ff_${axis}`),
-        makeLineTrace(pidPlusFfRows, "timeRel", "pid_plus_ff", `final_sp_control_${axis}`),
-        makeLineTrace(rows, "timeRel", `final_sp_${axis}`, `final_sp_${axis}`)
-      ], {
-        xaxis: { title: "Time [s]" },
-        yaxis: { title: `Command ${axis.toUpperCase()} [m/s]` },
-        margin: { t: 20 }
-      }, { responsive: true });
-    }
+      const traces = [
+        {
+          x: rows.map((row) => row.timeRel),
+          y: rows.map((row) => row[`pid_out_${axis}`]),
+          type: "scatter",
+          mode: "lines",
+          name: `pid_out_${axis}`
+        },
+        {
+          x: rows.map((row) => row.timeRel),
+          y: rows.map((row) => row[`ff_${axis}`]),
+          type: "scatter",
+          mode: "lines",
+          name: `ff_${axis}`
+        },
+        {
+          x: pidPlusFfRows.map((row) => row.timeRel),
+          y: pidPlusFfRows.map((row) => row.pid_plus_ff),
+          type: "scatter",
+          mode: "lines",
+          name: `final_sp_control_${axis}`
+        },
+        {
+          x: rows.map((row) => row.timeRel),
+          y: rows.map((row) => row[`error_${axis}`]),
+          type: "scatter",
+          mode: "lines",
+          name: `error_${axis}`
+        }
+      ];
 
-    function renderErrorPlot() {
-      const rows = appState.filteredControllerRows;
-      const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
-      Plotly.newPlot("errorPlot", [
-        makeLineTrace(rows, "timeRel", `error_${axis}`, `error_${axis}`),
-        makeLineTrace(rows, "timeRel", `future_error_${axis}`, `future_error_${axis}`),
-        makeLineTrace(rows, "timeRel", "error_xy_norm", "error_xy_norm"),
-        makeLineTrace(rows, "timeRel", "future_error_xy_norm", "future_error_xy_norm")
-      ], {
+      Plotly.newPlot("controllerErrorMergedPlot", traces, {
         xaxis: { title: "Time [s]" },
-        yaxis: { title: "Error" },
-        margin: { t: 20 }
-      }, { responsive: true });
+        yaxis: { title: `${axis.toUpperCase()} value` },
+        legend: { orientation: "h", y: 1.1, x: 0 },
+        margin: { t: 50, l: 60, r: 20, b: 50 }
+      }, { responsive: true, displaylogo: false });
     }
 
     function renderAltitudePlot() {
@@ -848,7 +855,7 @@
 
     async function exportAllPlots() {
       const plotIds = [
-        "trajectoryPlot", "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "altitudePlot",
+        "trajectoryPlot", "kalmanPlot", "velocityPlot", "controllerErrorMergedPlot", "altitudePlot",
         "bottleneckPlot", "cumulativePlot"
       ];
       for (const plotId of plotIds) {
@@ -898,7 +905,7 @@
 
     function resizeAllPlots() {
       [
-        "trajectoryPlot", "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "altitudePlot",
+        "trajectoryPlot", "kalmanPlot", "velocityPlot", "controllerErrorMergedPlot", "altitudePlot",
         "bottleneckPlot", "cumulativePlot"
       ].forEach((plotId) => {
         const element = document.getElementById(plotId);

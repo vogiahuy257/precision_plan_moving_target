@@ -84,10 +84,18 @@ XYControllerOutput XYVelocityController::update(const XYControllerInput &input)
         {
             velXIntegral_ += errX * dt;
         }
+        else
+        {
+            velXIntegral_ = 0.0f;
+        }
 
         if (std::abs(errY) > params_.deadband)
         {
             velYIntegral_ += errY * dt;
+        }
+        else
+        {
+            velYIntegral_ = 0.0f;
         }
 
         float xi = 0.0f;

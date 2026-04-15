@@ -167,8 +167,8 @@ bool DisarmController::sendDisarmCommand()
     try
     {
         publishVehicleCommand(
-            px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,
-            static_cast<float>(px4_msgs::msg::VehicleCommand::ARMING_ACTION_DISARM),
+            px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND,
+            0.0f,
             0.0f);
 
         disarmSent_ = true;
@@ -176,18 +176,18 @@ bool DisarmController::sendDisarmCommand()
         disarmRequestTime_ = node_->now();
         status_ = DisarmDecisionStatus::WaitingAck;
 
-        RCLCPP_WARN(node_->get_logger(), "[DisarmController] Da gui lenh DISARM, tiep tuc retry den khi ACCEPTED");
+        RCLCPP_WARN(node_->get_logger(), "[DisarmController] Da gui lenh LAND, tiep tuc retry den khi ACCEPTED");
         return true;
     }
     catch (const std::exception &e)
     {
-        RCLCPP_ERROR(node_->get_logger(), "[DisarmController] Exception khi gui DISARM: %s", e.what());
+        RCLCPP_ERROR(node_->get_logger(), "[DisarmController] Exception khi gui LAND: %s", e.what());
         status_ = DisarmDecisionStatus::Rejected;
         return false;
     }
     catch (...)
     {
-        RCLCPP_ERROR(node_->get_logger(), "[DisarmController] Unknown exception khi gui DISARM");
+        RCLCPP_ERROR(node_->get_logger(), "[DisarmController] Unknown exception khi gui LAND");
         status_ = DisarmDecisionStatus::Rejected;
         return false;
     }
@@ -216,7 +216,6 @@ void DisarmController::publishVehicleCommand(uint16_t command, float param1, flo
         static_cast<double>(param1),
         static_cast<double>(param2));
 }
-
 DisarmDecisionStatus DisarmController::handleAck(const px4_msgs::msg::VehicleCommandAck::SharedPtr msg)
 {
     if (msg == nullptr)
@@ -224,7 +223,7 @@ DisarmDecisionStatus DisarmController::handleAck(const px4_msgs::msg::VehicleCom
         return status_;
     }
 
-    if (msg->command != px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM)
+    if (msg->command != px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND)
     {
         return status_;
     }
@@ -233,7 +232,7 @@ DisarmDecisionStatus DisarmController::handleAck(const px4_msgs::msg::VehicleCom
     {
         RCLCPP_WARN(
             node_->get_logger(),
-            "[DisarmController] Nhan ACK DISARM: command=%u result=%u from_external=%d",
+            "[DisarmController] Nhan ACK LAND: command=%u result=%u from_external=%d",
             static_cast<unsigned>(msg->command),
             static_cast<unsigned>(msg->result),
             static_cast<int>(msg->from_external));
@@ -246,7 +245,6 @@ DisarmDecisionStatus DisarmController::handleAck(const px4_msgs::msg::VehicleCom
     }
     else
     {
-        // Khong Accepted thi de update() tiep tuc retry
         waitingAck_ = false;
         status_ = DisarmDecisionStatus::Rejected;
         disarmRequestTime_ = node_ != nullptr ? node_->now() : disarmRequestTime_;

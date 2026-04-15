@@ -27,25 +27,25 @@ precision_land:
     # =========================
 
     # Deadband lỗi XY, lỗi nhỏ hơn ngưỡng này sẽ coi như 0 để giảm rung
-    PID_deadband: 0.05
+    PID_deadband: 0.08
 
     # Thời gian tối đa cho phép không nhận được pose target trước khi coi là mất mục tiêu
     target_timeout: 3.0
 
     # Gain P của controller XY
-    descent_kp_pid: 1.0
+    descent_kp_pid: 0.2
 
     # Gain I của controller XY
-    descent_ki_pid: 0.0
+    descent_ki_pid: 0.01
 
     # Gain D của controller XY
-    descent_kd_pid: 0.0
+    descent_kd_pid: 0.2
 
     # Giới hạn vận tốc ngang lớn nhất mà controller XY được phép xuất ra
     descent_max_velocity: 10.0
 
     # Giới hạn tốc độ thay đổi vận tốc ngang để làm mượt lệnh điều khiển
-    slew_acc: 3.5
+    slew_acc: 10.0
 
     # =========================
     # Tham số controller Z
@@ -62,10 +62,10 @@ precision_land:
     descent_gate_radius: 0.3
 
     # Vận tốc hạ nhỏ nhất khi đang ở trong gate
-    vmin: 0.45
+    vmin: 0.6
 
     # Vận tốc hạ lớn nhất khi target nằm gần tâm
-    vmax: 0.8
+    vmax: 1.2
 
     # =========================
     # Tham số prediction
@@ -75,7 +75,7 @@ precision_land:
     use_predictive_error: true
 
     # Giới hạn trên của thời gian dự đoán tương lai
-    prediction_dt_max: 0.75
+    prediction_dt_max: 100.0
 
     # Cộng thêm phần lead time cố định để bù trễ xử lý và phản ứng hệ thống
     control_extra_lead_sec: 0.25

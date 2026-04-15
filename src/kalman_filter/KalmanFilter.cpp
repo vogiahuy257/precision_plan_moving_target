@@ -51,7 +51,7 @@ void publishKalmanTiming(
     msg.data = ss.str();
     pub->publish(msg);
 }
-}
+} // namespace
 
 KalmanFilterNode::KalmanFilterNode()
     : Node("kalman_filter_node")
@@ -300,12 +300,10 @@ void KalmanFilterNode::initKalman()
 
     kf_.measurementMatrix = cv::Mat::zeros(measurementSize, stateSize, CV_64F);
 
-    // position measurement
     kf_.measurementMatrix.at<double>(0, IDX_PX) = 1.0;
     kf_.measurementMatrix.at<double>(1, IDX_PY) = 1.0;
     kf_.measurementMatrix.at<double>(2, IDX_PZ) = 1.0;
 
-    // velocity pseudo-measurement: vx_out = vx + bvx, vy_out = vy + bvy
     kf_.measurementMatrix.at<double>(3, IDX_VX) = 1.0;
     kf_.measurementMatrix.at<double>(3, IDX_BVX) = 1.0;
 

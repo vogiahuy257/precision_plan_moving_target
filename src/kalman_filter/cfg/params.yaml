@@ -34,10 +34,10 @@ kalman_filter_node:
 
     # Nhiễu quá trình theo gia tốc trên trục X
     # Tăng lên -> Kalman tin mô hình chuyển động thay đổi nhanh hơn, phản ứng nhanh hơn nhưng dễ nhiễu hơn
-    q_acc_x: 0.02
+    q_acc_x: 0.018
 
     # Nhiễu quá trình theo gia tốc trên trục Y
-    q_acc_y: 0.02
+    q_acc_y: 0.018
 
     # Nhiễu quá trình theo gia tốc trên trục Z
     # Để nhỏ hơn vì trục Z thường ít thay đổi mạnh hơn X,Y trong bài toán này
@@ -52,10 +52,10 @@ kalman_filter_node:
 
     # Nhiễu đo vị trí trên trục X
     # Giá trị nhỏ -> tin measurement nhiều hơn, bám nhanh hơn nhưng dễ rung hơn
-    r_pos_x: 0.0008
+    r_pos_x: 0.003
 
     # Nhiễu đo vị trí trên trục Y
-    r_pos_y: 0.0008
+    r_pos_y: 0.003
 
     # Nhiễu đo vị trí trên trục Z
     # Thường để lớn hơn X,Y vì ước lượng chiều sâu hay độ cao thường kém ổn định hơn
@@ -63,10 +63,10 @@ kalman_filter_node:
 
     # Nhiễu đo vận tốc trục X
     # Vì vận tốc thường tính gián tiếp từ sai phân nên khá nhiễu, thường đặt lớn hơn r_pos
-    r_vel_x: 0.25
+    r_vel_x: 0.38
 
     # Nhiễu đo vận tốc trục Y
-    r_vel_y: 0.25
+    r_vel_y: 0.38
 
     # Độ lệch vị trí camera so với tâm drone theo trục X
     cam_offset_x: 0.0
