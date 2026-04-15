@@ -6,7 +6,7 @@ namespace precision_land
 {
 namespace
 {
-constexpr double kRetryCooldownSec = 0.3;
+constexpr double kRetryCooldownSec = 0.1;
 }
 
 void DisarmController::configure(
@@ -116,32 +116,42 @@ DisarmControllerOutput DisarmController::update(const DisarmControllerInput &inp
         return output;
     }
 
-    if (waitingAck_)
-    {
-        status_ = DisarmDecisionStatus::WaitingAck;
-        output.status = status_;
-        return output;
-    }
-
     if (!allowDisarmNow)
     {
+        waitingAck_ = false;
         status_ = DisarmDecisionStatus::Blocked;
         output.status = status_;
         return output;
     }
 
-    if (status_ == DisarmDecisionStatus::Rejected && node_ != nullptr)
+    if (node_ == nullptr)
     {
-        const double dt = (node_->now() - disarmRequestTime_).seconds();
-        if (dt < kRetryCooldownSec)
-        {
-            output.status = status_;
-            return output;
-        }
+        status_ = DisarmDecisionStatus::Rejected;
+        output.status = status_;
+        return output;
     }
 
-    const bool sendOk = sendDisarmCommand();
-    output.shouldSendDisarm = sendOk;
+    const double dtFromLastRequest = (node_->now() - disarmRequestTime_).seconds();
+
+    // Gui lan dau neu chua gui lan nao
+    if (!disarmSent_)
+    {
+        const bool sendOk = sendDisarmCommand();
+        output.shouldSendDisarm = sendOk;
+        output.status = status_;
+        return output;
+    }
+
+    // Neu dang cho ACK hoac da bi reject, van retry lien tuc theo chu ky ngan
+    if (dtFromLastRequest >= kRetryCooldownSec)
+    {
+        const bool sendOk = sendDisarmCommand();
+        output.shouldSendDisarm = sendOk;
+        output.status = status_;
+        return output;
+    }
+
+    status_ = waitingAck_ ? DisarmDecisionStatus::WaitingAck : status_;
     output.status = status_;
     return output;
 }
@@ -151,12 +161,6 @@ bool DisarmController::sendDisarmCommand()
     if (node_ == nullptr || vehicleCommandPub_ == nullptr)
     {
         status_ = DisarmDecisionStatus::Rejected;
-        return false;
-    }
-
-    if (waitingAck_)
-    {
-        status_ = DisarmDecisionStatus::WaitingAck;
         return false;
     }
 
@@ -172,7 +176,7 @@ bool DisarmController::sendDisarmCommand()
         disarmRequestTime_ = node_->now();
         status_ = DisarmDecisionStatus::WaitingAck;
 
-        RCLCPP_WARN(node_->get_logger(), "[DisarmController] Da gui lenh DISARM, cho ACK");
+        RCLCPP_WARN(node_->get_logger(), "[DisarmController] Da gui lenh DISARM, tiep tuc retry den khi ACCEPTED");
         return true;
     }
     catch (const std::exception &e)
@@ -225,14 +229,6 @@ DisarmDecisionStatus DisarmController::handleAck(const px4_msgs::msg::VehicleCom
         return status_;
     }
 
-    // Chi xu ly ACK khi chinh controller dang cho ACK cua lenh disarm
-    if (!waitingAck_)
-    {
-        return status_;
-    }
-
-    waitingAck_ = false;
-
     if (node_ != nullptr)
     {
         RCLCPP_WARN(
@@ -245,10 +241,13 @@ DisarmDecisionStatus DisarmController::handleAck(const px4_msgs::msg::VehicleCom
 
     if (msg->result == px4_msgs::msg::VehicleCommandAck::VEHICLE_CMD_RESULT_ACCEPTED)
     {
+        waitingAck_ = false;
         status_ = DisarmDecisionStatus::Accepted;
     }
     else
     {
+        // Khong Accepted thi de update() tiep tuc retry
+        waitingAck_ = false;
         status_ = DisarmDecisionStatus::Rejected;
         disarmRequestTime_ = node_ != nullptr ? node_->now() : disarmRequestTime_;
     }

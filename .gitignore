@@ -5,3 +5,5 @@ log_precision_land/
 logs/
 .vscode
 src/*.zip
+precisionland_logs/controller/*.csv
+precisionland_logs/pipeline_timing/*.csv

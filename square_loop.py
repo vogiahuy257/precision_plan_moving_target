@@ -9,7 +9,7 @@ import os
 TOPIC = "/land_pad/cmd_vel"
 RATE = 10
 DURATION = 100
-SPEED = 1.5
+SPEED = 3.0
 
 current_process = None
 stop_requested = False

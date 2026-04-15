@@ -12,8 +12,8 @@
       --text: #16324f;
       --muted: #5f7a96;
       --accent: #3b82f6;
-      --border: #d9e8f7;
       --accent2: #0f766e;
+      --border: #d9e8f7;
     }
     * { box-sizing: border-box; }
     body {
@@ -23,28 +23,46 @@
       color: var(--text);
     }
     .container {
-      max-width: 1500px;
+      max-width: 1600px;
       margin: 0 auto;
       padding: 20px;
     }
-    .header { margin-bottom: 16px; }
-    .title { margin: 0 0 6px; font-size: 28px; font-weight: 700; }
-    .subtitle { margin: 0; color: var(--muted); }
-    .controls {
+    .header {
+      margin-bottom: 16px;
+    }
+    .title {
+      margin: 0 0 6px;
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+    }
+    .layout {
       display: grid;
-      grid-template-columns: 1.2fr 1fr 1fr auto auto auto;
+      grid-template-columns: 340px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .leftPanel {
+      position: sticky;
+      top: 16px;
+      display: grid;
       gap: 12px;
-      align-items: center;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 18px;
       padding: 14px;
       box-shadow: 0 10px 25px rgba(40, 90, 140, 0.08);
-      margin-bottom: 16px;
+    }
+    .rightPanel {
+      min-width: 0;
+      display: grid;
+      gap: 16px;
     }
     .dropWrap {
       display: grid;
-      grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
     .dropzone {
@@ -65,11 +83,29 @@
       border-color: var(--accent2);
       background: #ecfdf5;
     }
-    .dropzone.dragover { transform: scale(1.01); }
-    .dropzone.controller.dragover { background: #dbeafe; }
-    .dropzone.pipeline.dragover { background: #d1fae5; }
-    .controlGroup { display: flex; flex-direction: column; gap: 6px; }
-    label { font-size: 13px; color: var(--muted); font-weight: 600; }
+    .dropzone.dragover {
+      transform: scale(1.01);
+    }
+    .dropzone.controller.dragover {
+      background: #dbeafe;
+    }
+    .dropzone.pipeline.dragover {
+      background: #d1fae5;
+    }
+    .menuSection {
+      display: grid;
+      gap: 10px;
+    }
+    .controlGroup {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+    }
     select, button, input[type="file"] {
       border-radius: 12px;
       border: 1px solid var(--border);
@@ -78,14 +114,24 @@
       background: white;
       color: var(--text);
     }
-    button { cursor: pointer; font-weight: 600; }
-    .primary { background: var(--accent); color: white; border-color: var(--accent); }
-    .secondary { background: var(--accent2); color: white; border-color: var(--accent2); }
+    button {
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    .secondary {
+      background: var(--accent2);
+      color: white;
+      border-color: var(--accent2);
+    }
     .infoBar {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 12px;
-      margin-bottom: 16px;
     }
     .stat {
       background: var(--card);
@@ -93,13 +139,21 @@
       border-radius: 16px;
       padding: 14px;
       box-shadow: 0 10px 25px rgba(40, 90, 140, 0.06);
+      min-width: 0;
     }
-    .statLabel { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-    .statValue { font-size: 22px; font-weight: 700; word-break: break-word; }
+    .statLabel {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .statValue {
+      font-size: 20px;
+      font-weight: 700;
+      word-break: break-word;
+    }
     .tabs {
       display: flex;
       gap: 8px;
-      margin-bottom: 16px;
       flex-wrap: wrap;
     }
     .tabBtn {
@@ -114,8 +168,13 @@
       color: white;
       border-color: var(--accent);
     }
-    .tabPane.hidden, .hidden { display: none; }
-    .chartGrid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .tabPane.hidden, .hidden {
+      display: none;
+    }
+    .chartGrid {
+      display: grid;
+      gap: 16px;
+    }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -123,8 +182,18 @@
       padding: 14px;
       box-shadow: 0 10px 25px rgba(40, 90, 140, 0.06);
     }
-    .cardTitle { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
-    .plot { width: 100%; min-height: 420px; }
+    .cardTitle {
+      margin: 0 0 8px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .plot {
+      width: 100%;
+      min-height: 420px;
+    }
+    .plot.large3d {
+      min-height: 780px;
+    }
     .empty {
       background: var(--card);
       border: 1px dashed var(--border);
@@ -133,13 +202,23 @@
       color: var(--muted);
       text-align: center;
     }
-    @media (max-width: 1100px) {
-      .controls { grid-template-columns: 1fr; }
-      .dropWrap { grid-template-columns: 1fr; }
-      .infoBar { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 1200px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      .leftPanel {
+        position: static;
+      }
+    }
+    @media (max-width: 900px) {
+      .infoBar {
+        grid-template-columns: 1fr 1fr;
+      }
     }
     @media (max-width: 640px) {
-      .infoBar { grid-template-columns: 1fr; }
+      .infoBar {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -147,81 +226,107 @@
   <div class="container">
     <div class="header">
       <h1 class="title">PrecisionLand Log Viewer</h1>
-      <p class="subtitle">Kéo thả file controller CSV và pipeline timing CSV để xem biểu đồ, đánh giá hệ thống và xuất ảnh PNG.</p>
+      <p class="subtitle">Kéo thả file controller CSV và pipeline timing CSV để xem biểu đồ đánh giá hệ thống.</p>
     </div>
 
-    <div class="controls">
-      <div class="dropWrap">
-        <div id="controllerDropzone" class="dropzone controller">
-          <div><strong>Controller CSV</strong></div>
-          <div style="margin-top: 6px; color: var(--muted);">Kéo thả hoặc bấm để chọn</div>
-          <input id="controllerFileInput" type="file" accept=".csv" class="hidden" />
+    <div class="layout">
+      <div class="leftPanel">
+        <div class="dropWrap">
+          <div id="controllerDropzone" class="dropzone controller">
+            <div><strong>Controller CSV</strong></div>
+            <div style="margin-top: 6px; color: var(--muted);">Kéo thả hoặc bấm để chọn</div>
+            <input id="controllerFileInput" type="file" accept=".csv" class="hidden" />
+          </div>
+
+          <div id="pipelineDropzone" class="dropzone pipeline">
+            <div><strong>Pipeline Timing CSV</strong></div>
+            <div style="margin-top: 6px; color: var(--muted);">Kéo thả hoặc bấm để chọn</div>
+            <input id="pipelineFileInput" type="file" accept=".csv" class="hidden" />
+          </div>
         </div>
-        <div id="pipelineDropzone" class="dropzone pipeline">
-          <div><strong>Pipeline Timing CSV</strong></div>
-          <div style="margin-top: 6px; color: var(--muted);">Kéo thả hoặc bấm để chọn</div>
-          <input id="pipelineFileInput" type="file" accept=".csv" class="hidden" />
+
+        <div class="menuSection">
+          <div class="controlGroup">
+            <label for="stateFilter">Lọc state</label>
+            <select id="stateFilter">
+              <option value="ALL">Tất cả</option>
+            </select>
+          </div>
+
+          <div class="controlGroup">
+            <label for="axisFilter">Trục 2D</label>
+            <select id="axisFilter">
+              <option value="x">X</option>
+              <option value="y">Y</option>
+              <option value="z">Z</option>
+            </select>
+          </div>
+
+          <button id="renderBtn" class="primary">Vẽ lại</button>
+          <button id="exportBtn" class="secondary">Xuất PNG</button>
+          <button id="resetBtn">Xóa dữ liệu</button>
         </div>
       </div>
 
-      <div class="controlGroup">
-        <label for="stateFilter">Lọc state</label>
-        <select id="stateFilter">
-          <option value="ALL">Tất cả</option>
-        </select>
-      </div>
-
-      <div class="controlGroup">
-        <label for="axisFilter">Trục 2D</label>
-        <select id="axisFilter">
-          <option value="x">X</option>
-          <option value="y">Y</option>
-          <option value="z">Z</option>
-        </select>
-      </div>
-
-      <button id="renderBtn" class="primary">Vẽ lại</button>
-      <button id="exportBtn" class="secondary">Xuất PNG</button>
-      <button id="resetBtn">Xóa dữ liệu</button>
-    </div>
-
-    <div id="infoBar" class="infoBar hidden">
-      <div class="stat"><div class="statLabel">Controller file</div><div id="controllerFileName" class="statValue">-</div></div>
-      <div class="stat"><div class="statLabel">Pipeline file</div><div id="pipelineFileName" class="statValue">-</div></div>
-      <div class="stat"><div class="statLabel">Số mẫu controller</div><div id="rowCount" class="statValue">-</div></div>
-      <div class="stat"><div class="statLabel">Thời lượng</div><div id="duration" class="statValue">-</div></div>
-      <div class="stat"><div class="statLabel">State</div><div id="stateSummary" class="statValue">-</div></div>
-    </div>
-
-    <div class="tabs hidden" id="tabsBar">
-      <button class="tabBtn active" data-tab="controllerTab">Controller Charts</button>
-      <button class="tabBtn" data-tab="pipelineTab">Pipeline Timing Charts</button>
-    </div>
-
-    <div id="emptyState" class="empty">
-      Chưa có dữ liệu. Hãy kéo thả file CSV để bắt đầu.
-    </div>
-
-    <div id="controllerTab" class="tabPane hidden">
-      <div class="chartGrid">
-        <div class="card" style="order: -10;">
-          <h3 class="cardTitle">3D Trajectory: Drone / Target Estimate / Target Prediction</h3>
-          <div id="trajectoryPlot" class="plot" style="min-height: 760px;"></div>
+      <div class="rightPanel">
+        <div id="infoBar" class="infoBar hidden">
+          <div class="stat"><div class="statLabel">Controller file</div><div id="controllerFileName" class="statValue">-</div></div>
+          <div class="stat"><div class="statLabel">Pipeline file</div><div id="pipelineFileName" class="statValue">-</div></div>
+          <div class="stat"><div class="statLabel">Số mẫu controller</div><div id="rowCount" class="statValue">-</div></div>
+          <div class="stat"><div class="statLabel">Thời lượng</div><div id="duration" class="statValue">-</div></div>
+          <div class="stat"><div class="statLabel">State</div><div id="stateSummary" class="statValue">-</div></div>
         </div>
-        <div class="card"><h3 class="cardTitle">Raw vs Filtered vs Predicted Kalman</h3><div id="kalmanPlot" class="plot"></div></div>
-        <div class="card"><h3 class="cardTitle">Target Velocity vs Final SP vs Drone Velocity</h3><div id="velocityPlot" class="plot"></div></div>
-        <div class="card"><h3 class="cardTitle">PID vs Feedforward vs Final Setpoint</h3><div id="pidPlot" class="plot"></div></div>
-        <div class="card"><h3 class="cardTitle">Error vs Future Error</h3><div id="errorPlot" class="plot"></div></div>
-        <div class="card"><h3 class="cardTitle">Altitude / Dist Bottom / Final SP Z / Disarm / Land Detected</h3><div id="altitudePlot" class="plot"></div></div>
-      </div>
-    </div>
 
-    <div id="pipelineTab" class="tabPane hidden">
-      <div class="chartGrid">
-        <div class="card"><h3 class="cardTitle">Node Timing</h3><div id="nodeTimingPlot" class="plot"></div></div>
-        <div class="card"><h3 class="cardTitle">Inter-node Delay</h3><div id="interNodePlot" class="plot"></div></div>
-        <div class="card"><h3 class="cardTitle">Total Image to Command Delay</h3><div id="totalDelayPlot" class="plot"></div></div>
-        <div class="card"><h3 class="cardTitle">Pipeline Delay Histogram</h3><div id="histogramPlot" class="plot"></div></div>
+        <div id="tabsBar" class="tabs hidden">
+          <button class="tabBtn active" data-tab="controllerTab">Controller Charts</button>
+          <button class="tabBtn" data-tab="pipelineTab">Pipeline Timing Charts</button>
+        </div>
+
+        <div id="emptyState" class="empty">
+          Chưa có dữ liệu. Hãy kéo thả file CSV để bắt đầu.
+        </div>
+
+        <div id="controllerTab" class="tabPane hidden">
+          <div class="chartGrid">
+            <div class="card">
+              <h3 class="cardTitle">3D Trajectory: Drone / Target Estimate / Target Prediction</h3>
+              <div id="trajectoryPlot" class="plot large3d"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">Raw vs Filtered vs Predicted Kalman</h3>
+              <div id="kalmanPlot" class="plot"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">Target Velocity vs Final SP vs Drone Velocity</h3>
+              <div id="velocityPlot" class="plot"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">PID vs Feedforward vs Final Setpoint</h3>
+              <div id="pidPlot" class="plot"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">Error vs Future Error</h3>
+              <div id="errorPlot" class="plot"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">Altitude / Dist Bottom / Final SP Z / Disarm / Land Detected</h3>
+              <div id="altitudePlot" class="plot"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="pipelineTab" class="tabPane hidden">
+          <div class="chartGrid">
+            <div class="card">
+              <h3 class="cardTitle">Bottleneck độ trễ toàn pipeline theo từng stage</h3>
+              <div id="bottleneckPlot" class="plot"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">So sánh cộng dồn từng stage với tổng độ trễ toàn hệ</h3>
+              <div id="cumulativePlot" class="plot"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -244,11 +349,16 @@
     ];
 
     const requiredPipelineColumns = [
-      "image_stamp", "aruco_found",
-      "aruco_processing_dt", "aruco_total_node_dt",
-      "kalman_processing_dt", "kalman_measurement_dt", "kalman_predict_dt",
-      "pl_pose_wait_dt", "pl_vel_wait_dt", "pl_control_processing_dt", "pl_send_cmd_dt",
-      "dt_aruco_to_kalman", "dt_kalman_to_pl_pose", "dt_kalman_to_pl_vel", "dt_total_image_to_cmd"
+      "aruco_processing_dt",
+      "aruco_send_dt",
+      "dt_aruco_to_kalman",
+      "kalman_processing_dt",
+      "kalman_send_dt",
+      "dt_kalman_to_pl_pose",
+      "pl_pose_wait_dt",
+      "pl_control_processing_dt",
+      "pl_send_cmd_dt",
+      "dt_total_image_to_cmd"
     ];
 
     const appState = {
@@ -271,8 +381,6 @@
     const infoBar = document.getElementById("infoBar");
     const tabsBar = document.getElementById("tabsBar");
     const emptyState = document.getElementById("emptyState");
-    const tabButtons = () => Array.from(document.querySelectorAll(".tabBtn"));
-    const tabPanes = () => Array.from(document.querySelectorAll(".tabPane"));
 
     setupDropzone(controllerDropzone, controllerFileInput, "controller");
     setupDropzone(pipelineDropzone, pipelineFileInput, "pipeline");
@@ -285,7 +393,7 @@
     stateFilter.addEventListener("change", () => renderAllCharts());
     axisFilter.addEventListener("change", () => renderAllCharts());
 
-    tabButtons().forEach((button) => {
+    document.querySelectorAll(".tabBtn").forEach((button) => {
       button.addEventListener("click", () => activateTab(button.dataset.tab));
     });
 
@@ -304,12 +412,14 @@
     }
 
     function activateTab(tabId) {
-      tabButtons().forEach((button) => {
+      document.querySelectorAll(".tabBtn").forEach((button) => {
         button.classList.toggle("active", button.dataset.tab === tabId);
       });
-      tabPanes().forEach((pane) => {
+      document.querySelectorAll(".tabPane").forEach((pane) => {
         pane.classList.toggle("hidden", pane.id !== tabId);
       });
+
+      requestAnimationFrame(() => resizeAllPlots());
     }
 
     function resetViewer() {
@@ -326,14 +436,15 @@
       infoBar.classList.add("hidden");
       tabsBar.classList.add("hidden");
       emptyState.classList.remove("hidden");
-      tabPanes().forEach((pane) => pane.classList.add("hidden"));
+      document.getElementById("controllerTab").classList.add("hidden");
+      document.getElementById("pipelineTab").classList.add("hidden");
       clearPlots();
     }
 
     function clearPlots() {
       [
-        "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "trajectoryPlot", "altitudePlot",
-        "nodeTimingPlot", "interNodePlot", "totalDelayPlot", "histogramPlot"
+        "trajectoryPlot", "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "altitudePlot",
+        "bottleneckPlot", "cumulativePlot"
       ].forEach((id) => Plotly.purge(id));
     }
 
@@ -350,8 +461,9 @@
           fillStateFilter();
         } else {
           validateColumns(rows, requiredPipelineColumns);
+          const timeKey = rows[0].image_stamp !== undefined ? "image_stamp" : Object.keys(rows[0])[0];
           appState.pipelineFileName = file.name;
-          appState.pipelineRows = enrichRows(rows, "image_stamp");
+          appState.pipelineRows = enrichRows(rows, timeKey);
         }
 
         renderAllCharts();
@@ -365,7 +477,6 @@
       if (lines.length < 2) throw new Error("File CSV khong co du du lieu.");
       const headers = splitCsvLine(lines[0]);
       const rows = [];
-
       for (let index = 1; index < lines.length; index += 1) {
         if (!lines[index].trim()) continue;
         const values = splitCsvLine(lines[index]);
@@ -450,22 +561,20 @@
 
       appState.filteredControllerRows = getFilteredControllerRows();
       updateInfoBar();
+      infoBar.classList.remove("hidden");
       tabsBar.classList.remove("hidden");
       emptyState.classList.add("hidden");
 
       if (hasController) {
-        document.getElementById("controllerTab").classList.remove("hidden");
         renderControllerCharts();
+        document.getElementById("controllerTab").classList.remove("hidden");
       }
       if (hasPipeline) {
-        document.getElementById("pipelineTab").classList.remove("hidden");
         renderPipelineCharts();
+        document.getElementById("pipelineTab").classList.remove("hidden");
       }
 
-      if (hasController) activateTab("controllerTab");
-      else activateTab("pipelineTab");
-
-      infoBar.classList.remove("hidden");
+      activateTab(hasController ? "controllerTab" : "pipelineTab");
     }
 
     function updateInfoBar() {
@@ -480,223 +589,273 @@
     }
 
     function makeLineTrace(rows, xKey, yKey, name) {
-      return { x: rows.map((row) => row[xKey]), y: rows.map((row) => row[yKey]), type: "scatter", mode: "lines", name };
+      return {
+        x: rows.map((row) => row[xKey]),
+        y: rows.map((row) => row[yKey]),
+        type: "scatter",
+        mode: "lines",
+        name
+      };
     }
 
     function renderControllerCharts() {
+      renderTrajectoryPlot();
       renderKalmanPlot();
       renderVelocityPlot();
       renderPidPlot();
       renderErrorPlot();
-      renderTrajectoryPlot();
       renderAltitudePlot();
+    }
+
+    function renderTrajectoryPlot() {
+      const rows = appState.filteredControllerRows;
+      if (!rows || rows.length === 0) return;
+
+      const droneX = rows.map((row) => row.drone_pos_x);
+      const droneY = rows.map((row) => row.drone_pos_y);
+      const droneZ = rows.map((row) => -row.drone_pos_z);
+      const targetEstX = rows.map((row) => row.target_est_x);
+      const targetEstY = rows.map((row) => row.target_est_y);
+      const targetEstZ = rows.map((row) => -row.target_est_z);
+      const targetPredX = rows.map((row) => row.target_pred_x);
+      const targetPredY = rows.map((row) => row.target_pred_y);
+      const targetPredZ = rows.map((row) => -row.target_pred_z);
+
+      const xMin = Math.min(...droneX, ...targetEstX, ...targetPredX);
+      const xMax = Math.max(...droneX, ...targetEstX, ...targetPredX);
+      const yMin = Math.min(...droneY, ...targetEstY, ...targetPredY);
+      const yMax = Math.max(...droneY, ...targetEstY, ...targetPredY);
+      const zMin = Math.min(...droneZ, ...targetEstZ, ...targetPredZ);
+      const zMax = Math.max(...droneZ, ...targetEstZ, ...targetPredZ);
+
+      const xRange = Math.max(xMax - xMin, 1e-3);
+      const yRange = Math.max(yMax - yMin, 1e-3);
+      const zRange = Math.max(zMax - zMin, 1e-3);
+
+      // Phong dai truc Y toi thieu de tranh 3D bi det khi East thay doi rat nho
+      const aspectX = 2.2;
+      const aspectY = Math.max(1.6, 2.2 * (yRange / xRange) * 6.0);
+      const aspectZ = Math.max(1.0, 2.2 * (zRange / xRange));
+
+      Plotly.newPlot("trajectoryPlot", [
+        { x: droneX, y: droneY, z: droneZ, type: "scatter3d", mode: "lines", name: "drone_pos", line: { width: 8 } },
+        { x: targetEstX, y: targetEstY, z: targetEstZ, type: "scatter3d", mode: "lines", name: "target_est", line: { width: 7 } },
+        { x: targetPredX, y: targetPredY, z: targetPredZ, type: "scatter3d", mode: "lines", name: "target_pred", line: { width: 7 } }
+      ], {
+        autosize: true,
+        scene: {
+          domain: { x: [0.0, 1.0], y: [0.0, 1.0] },
+          xaxis: { title: "North X [m]", showbackground: true, backgroundcolor: "#f8fbff", gridcolor: "#cddceb", zerolinecolor: "#9db7d3" },
+          yaxis: { title: "East Y [m]", showbackground: true, backgroundcolor: "#f8fbff", gridcolor: "#cddceb", zerolinecolor: "#9db7d3" },
+          zaxis: { title: "Up = -Down [m]", showbackground: true, backgroundcolor: "#f8fbff", gridcolor: "#cddceb", zerolinecolor: "#9db7d3" },
+          camera: {
+            eye: { x: 1.9, y: 1.7, z: 1.3 },
+            up: { x: 0, y: 0, z: 1 },
+            center: { x: 0, y: 0, z: 0 }
+          },
+          aspectmode: "manual",
+          aspectratio: { x: aspectX, y: aspectY, z: aspectZ }
+        },
+        legend: { orientation: "h", y: 1.02, x: 1, xanchor: "right" },
+        margin: { t: 40, l: 0, r: 0, b: 0 }
+      }, { responsive: true, displaylogo: false });
+
+      requestAnimationFrame(() => Plotly.Plots.resize(document.getElementById("trajectoryPlot")));
     }
 
     function renderKalmanPlot() {
       const rows = appState.filteredControllerRows;
       const axis = axisFilter.value;
-      const traces = [
+      Plotly.newPlot("kalmanPlot", [
         makeLineTrace(rows, "timeRel", `target_raw_${axis}`, `target_raw_${axis}`),
         makeLineTrace(rows, "timeRel", `target_est_${axis}`, `target_est_${axis}`),
-        makeLineTrace(rows, "timeRel", `target_pred_${axis}`, `target_pred_${axis}`),
-      ];
-      Plotly.newPlot("kalmanPlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: `${axis.toUpperCase()} [m]` }, margin: { t: 20 } }, { responsive: true });
+        makeLineTrace(rows, "timeRel", `target_pred_${axis}`, `target_pred_${axis}`)
+      ], {
+        xaxis: { title: "Time [s]" },
+        yaxis: { title: `${axis.toUpperCase()} [m]` },
+        margin: { t: 20 }
+      }, { responsive: true });
     }
 
     function renderVelocityPlot() {
       const rows = appState.filteredControllerRows;
       const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
-      const traces = [
+      Plotly.newPlot("velocityPlot", [
         makeLineTrace(rows, "timeRel", `target_vel_${axis}`, `target_vel_${axis}`),
         makeLineTrace(rows, "timeRel", `final_sp_${axis}`, `final_sp_${axis}`),
-        makeLineTrace(rows, "timeRel", `drone_vel_${axis}`, `drone_vel_${axis}`),
-      ];
-      Plotly.newPlot("velocityPlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: `Velocity ${axis.toUpperCase()} [m/s]` }, margin: { t: 20 } }, { responsive: true });
+        makeLineTrace(rows, "timeRel", `drone_vel_${axis}`, `drone_vel_${axis}`)
+      ], {
+        xaxis: { title: "Time [s]" },
+        yaxis: { title: `Velocity ${axis.toUpperCase()} [m/s]` },
+        margin: { t: 20 }
+      }, { responsive: true });
     }
 
     function renderPidPlot() {
       const rows = appState.filteredControllerRows;
       const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
-      const traces = [
+
+      const pidPlusFfRows = rows.map((row) => ({
+        timeRel: row.timeRel,
+        pid_plus_ff: Number(row[`pid_out_${axis}`]) + Number(row[`ff_${axis}`])
+      }));
+
+      Plotly.newPlot("pidPlot", [
         makeLineTrace(rows, "timeRel", `pid_out_${axis}`, `pid_out_${axis}`),
         makeLineTrace(rows, "timeRel", `ff_${axis}`, `ff_${axis}`),
-        makeLineTrace(rows, "timeRel", `final_sp_${axis}`, `final_sp_${axis}`),
-      ];
-      Plotly.newPlot("pidPlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: `Command ${axis.toUpperCase()} [m/s]` }, margin: { t: 20 } }, { responsive: true });
+        makeLineTrace(pidPlusFfRows, "timeRel", "pid_plus_ff", `final_sp_control_${axis}`),
+        makeLineTrace(rows, "timeRel", `final_sp_${axis}`, `final_sp_${axis}`)
+      ], {
+        xaxis: { title: "Time [s]" },
+        yaxis: { title: `Command ${axis.toUpperCase()} [m/s]` },
+        margin: { t: 20 }
+      }, { responsive: true });
     }
 
     function renderErrorPlot() {
       const rows = appState.filteredControllerRows;
       const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
-      const traces = [
+      Plotly.newPlot("errorPlot", [
         makeLineTrace(rows, "timeRel", `error_${axis}`, `error_${axis}`),
         makeLineTrace(rows, "timeRel", `future_error_${axis}`, `future_error_${axis}`),
         makeLineTrace(rows, "timeRel", "error_xy_norm", "error_xy_norm"),
-        makeLineTrace(rows, "timeRel", "future_error_xy_norm", "future_error_xy_norm"),
-      ];
-      Plotly.newPlot("errorPlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Error" }, margin: { t: 20 } }, { responsive: true });
-    }
-
-    function renderTrajectoryPlot() {
-      const rows = appState.filteredControllerRows;
-
-      const droneX = rows.map((row) => row.drone_pos_x);
-      const droneY = rows.map((row) => row.drone_pos_y);
-      const droneZ = rows.map((row) => -row.drone_pos_z);
-
-      const targetEstX = rows.map((row) => row.target_est_x);
-      const targetEstY = rows.map((row) => row.target_est_y);
-      const targetEstZ = rows.map((row) => -row.target_est_z);
-
-      const targetPredX = rows.map((row) => row.target_pred_x);
-      const targetPredY = rows.map((row) => row.target_pred_y);
-      const targetPredZ = rows.map((row) => -row.target_pred_z);
-
-      const traces = [
-        {
-          x: droneX,
-          y: droneY,
-          z: droneZ,
-          type: "scatter3d",
-          mode: "lines",
-          name: "drone_pos",
-          line: { width: 7 }
-        },
-        {
-          x: targetEstX,
-          y: targetEstY,
-          z: targetEstZ,
-          type: "scatter3d",
-          mode: "lines",
-          name: "target_est",
-          line: { width: 6 }
-        },
-        {
-          x: targetPredX,
-          y: targetPredY,
-          z: targetPredZ,
-          type: "scatter3d",
-          mode: "lines",
-          name: "target_pred",
-          line: { width: 6 }
-        },
-        {
-          x: [droneX[0]],
-          y: [droneY[0]],
-          z: [droneZ[0]],
-          type: "scatter3d",
-          mode: "markers",
-          name: "drone_start",
-          marker: { size: 5, symbol: "circle" },
-          showlegend: false
-        },
-        {
-          x: [droneX[droneX.length - 1]],
-          y: [droneY[droneY.length - 1]],
-          z: [droneZ[droneZ.length - 1]],
-          type: "scatter3d",
-          mode: "markers",
-          name: "drone_end",
-          marker: { size: 6, symbol: "diamond" },
-          showlegend: false
-        }
-      ];
-
-      Plotly.newPlot(
-        "trajectoryPlot",
-        traces,
-        {
-          scene: {
-            xaxis: {
-              title: "North X [m]",
-              showbackground: true,
-              backgroundcolor: "#f8fbff",
-              gridcolor: "#cddceb",
-              zerolinecolor: "#9db7d3"
-            },
-            yaxis: {
-              title: "East Y [m]",
-              showbackground: true,
-              backgroundcolor: "#f8fbff",
-              gridcolor: "#cddceb",
-              zerolinecolor: "#9db7d3"
-            },
-            zaxis: {
-              title: "Up = -Down [m]",
-              showbackground: true,
-              backgroundcolor: "#f8fbff",
-              gridcolor: "#cddceb",
-              zerolinecolor: "#9db7d3"
-            },
-            camera: {
-              eye: { x: 1.8, y: 1.6, z: 1.25 },
-              up: { x: 0, y: 0, z: 1 },
-              center: { x: 0, y: 0, z: 0 }
-            },
-            aspectmode: "manual",
-            aspectratio: { x: 2.4, y: 1.5, z: 1.0 }
-          },
-          legend: {
-            orientation: "h",
-            yanchor: "bottom",
-            y: 1.02,
-            xanchor: "right",
-            x: 1
-          },
-          margin: { t: 40, l: 0, r: 0, b: 0 }
-        },
-        { responsive: true }
-      );
+        makeLineTrace(rows, "timeRel", "future_error_xy_norm", "future_error_xy_norm")
+      ], {
+        xaxis: { title: "Time [s]" },
+        yaxis: { title: "Error" },
+        margin: { t: 20 }
+      }, { responsive: true });
     }
 
     function renderAltitudePlot() {
       const rows = appState.filteredControllerRows;
-      const traces = [
+      Plotly.newPlot("altitudePlot", [
         makeLineTrace(rows, "timeRel", "altitude_abs", "altitude_abs"),
         makeLineTrace(rows, "timeRel", "dist_bottom", "dist_bottom"),
         makeLineTrace(rows, "timeRel", "final_sp_z", "final_sp_z"),
         makeLineTrace(rows, "timeRel", "should_disarm", "should_disarm"),
-        makeLineTrace(rows, "timeRel", "land_detected", "land_detected"),
-      ];
-      Plotly.newPlot("altitudePlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Value" }, margin: { t: 20 } }, { responsive: true });
+        makeLineTrace(rows, "timeRel", "land_detected", "land_detected")
+      ], {
+        xaxis: { title: "Time [s]" },
+        yaxis: { title: "Value" },
+        margin: { t: 20 }
+      }, { responsive: true });
     }
 
     function renderPipelineCharts() {
       const rows = appState.pipelineRows;
-      const nodeTimingTraces = [
-        makeLineTrace(rows, "timeRel", "aruco_processing_dt", "aruco_processing_dt"),
-        makeLineTrace(rows, "timeRel", "kalman_processing_dt", "kalman_processing_dt"),
-        makeLineTrace(rows, "timeRel", "pl_control_processing_dt", "pl_control_processing_dt"),
+      const stageOrder = [
+        "aruco_processing_dt",
+        "aruco_send_dt",
+        "dt_aruco_to_kalman",
+        "kalman_processing_dt",
+        "kalman_send_dt",
+        "dt_kalman_to_pl_pose",
+        "pl_pose_wait_dt",
+        "pl_control_processing_dt",
+        "pl_send_cmd_dt",
+        "dt_total_image_to_cmd"
       ];
-      Plotly.newPlot("nodeTimingPlot", nodeTimingTraces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Processing Time [s]" }, margin: { t: 20 } }, { responsive: true });
-
-      const interNodeTraces = [
-        makeLineTrace(rows, "timeRel", "dt_aruco_to_kalman", "dt_aruco_to_kalman"),
-        makeLineTrace(rows, "timeRel", "dt_kalman_to_pl_pose", "dt_kalman_to_pl_pose"),
-        makeLineTrace(rows, "timeRel", "dt_kalman_to_pl_vel", "dt_kalman_to_pl_vel"),
+      const stageLabels = [
+        "aruco_processing",
+        "aruco_send",
+        "aruco_to_kalman",
+        "kalman_processing",
+        "kalman_send",
+        "kalman_to_pl_pose",
+        "pl_pose_wait",
+        "pl_control_processing",
+        "pl_send_cmd",
+        "total_image_to_cmd"
       ];
-      Plotly.newPlot("interNodePlot", interNodeTraces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Inter-node Delay [s]" }, margin: { t: 20 } }, { responsive: true });
 
-      const totalDelayTraces = [
-        makeLineTrace(rows, "timeRel", "dt_total_image_to_cmd", "dt_total_image_to_cmd"),
-        makeLineTrace(rows, "timeRel", "aruco_total_node_dt", "aruco_total_node_dt"),
-      ];
-      Plotly.newPlot("totalDelayPlot", totalDelayTraces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Delay [s]" }, margin: { t: 20 } }, { responsive: true });
+      const stageSeries = stageOrder.map((columnName) => getValidSeries(rows, columnName));
+      const stats = stageSeries.map((series, index) => ({
+        stage: stageLabels[index],
+        meanMs: mean(series) * 1000.0,
+        p95Ms: quantile(series, 0.95) * 1000.0,
+        maxMs: maxValue(series) * 1000.0
+      }));
 
-      Plotly.newPlot("histogramPlot", [{ x: rows.map((row) => row.dt_total_image_to_cmd), type: "histogram", name: "dt_total_image_to_cmd" }], { xaxis: { title: "Delay [s]" }, yaxis: { title: "Count" }, margin: { t: 20 } }, { responsive: true });
+      const bottleneckStats = stats.slice(0, stats.length - 1).sort((rowA, rowB) => rowB.meanMs - rowA.meanMs);
+
+      Plotly.newPlot("bottleneckPlot", [
+        {
+          x: bottleneckStats.map((row) => row.meanMs),
+          y: bottleneckStats.map((row) => row.stage),
+          type: "bar",
+          orientation: "h",
+          name: "mean_ms",
+          text: bottleneckStats.map((row) => `mean=${row.meanMs.toFixed(2)} ms<br>p95=${row.p95Ms.toFixed(2)} ms<br>max=${row.maxMs.toFixed(2)} ms`),
+          hoverinfo: "text+x+y"
+        },
+        {
+          x: bottleneckStats.map((row) => row.p95Ms),
+          y: bottleneckStats.map((row) => row.stage),
+          type: "scatter",
+          mode: "markers",
+          name: "p95_ms",
+          marker: { size: 10 }
+        }
+      ], {
+        xaxis: { title: "Độ trễ (ms)" },
+        yaxis: { autorange: "reversed" },
+        margin: { t: 20, l: 190, r: 20, b: 50 },
+        legend: { orientation: "h" }
+      }, { responsive: true });
+
+      const componentStats = stats.slice(0, stats.length - 1);
+      const componentMeanMs = componentStats.map((row) => row.meanMs);
+      const cumulativeMeanMs = [];
+      let runningSum = 0.0;
+      for (const value of componentMeanMs) {
+        runningSum += value;
+        cumulativeMeanMs.push(runningSum);
+      }
+      const totalStats = stats[stats.length - 1];
+      const xLabels = componentStats.map((row) => row.stage);
+
+      Plotly.newPlot("cumulativePlot", [
+        {
+          x: xLabels,
+          y: componentMeanMs,
+          type: "scatter",
+          mode: "lines+markers",
+          name: "Mean từng stage"
+        },
+        {
+          x: xLabels,
+          y: cumulativeMeanMs,
+          type: "scatter",
+          mode: "lines+markers",
+          name: "Mean cộng dồn"
+        },
+        {
+          x: xLabels,
+          y: xLabels.map(() => totalStats.meanMs),
+          type: "scatter",
+          mode: "lines",
+          name: `Mean total_image_to_cmd = ${totalStats.meanMs.toFixed(2)} ms`,
+          line: { dash: "dash" }
+        }
+      ], {
+        xaxis: { title: "Stage" },
+        yaxis: { title: "Độ trễ (ms)" },
+        margin: { t: 20, l: 70, r: 20, b: 90 },
+        legend: { orientation: "h" }
+      }, { responsive: true });
     }
 
     async function exportAllPlots() {
       const plotIds = [
-        "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "trajectoryPlot", "altitudePlot",
-        "nodeTimingPlot", "interNodePlot", "totalDelayPlot", "histogramPlot"
+        "trajectoryPlot", "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "altitudePlot",
+        "bottleneckPlot", "cumulativePlot"
       ];
-
       for (const plotId of plotIds) {
         const element = document.getElementById(plotId);
         if (!element || !element.data || element.data.length === 0) continue;
         try {
-          const url = await Plotly.toImage(element, { format: "png", width: 1400, height: 800, scale: 2 });
+          const url = await Plotly.toImage(element, { format: "png", width: 1600, height: 900, scale: 2 });
           const link = document.createElement("a");
           link.href = url;
           link.download = `${plotId}.png`;
@@ -708,6 +867,48 @@
         }
       }
     }
+
+    function getValidSeries(rows, columnName) {
+      return rows
+        .map((row) => Number(row[columnName]))
+        .filter((value) => Number.isFinite(value) && value >= 0.0);
+    }
+
+    function mean(values) {
+      if (!values || values.length === 0) return 0.0;
+      return values.reduce((sum, value) => sum + value, 0.0) / values.length;
+    }
+
+    function maxValue(values) {
+      if (!values || values.length === 0) return 0.0;
+      return Math.max(...values);
+    }
+
+    function quantile(values, q) {
+      if (!values || values.length === 0) return 0.0;
+      const sorted = [...values].sort((a, b) => a - b);
+      const position = (sorted.length - 1) * q;
+      const base = Math.floor(position);
+      const rest = position - base;
+      if (sorted[base + 1] !== undefined) {
+        return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+      }
+      return sorted[base];
+    }
+
+    function resizeAllPlots() {
+      [
+        "trajectoryPlot", "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "altitudePlot",
+        "bottleneckPlot", "cumulativePlot"
+      ].forEach((plotId) => {
+        const element = document.getElementById(plotId);
+        if (element && element.data) {
+          Plotly.Plots.resize(element);
+        }
+      });
+    }
+
+    window.addEventListener("resize", () => resizeAllPlots());
 
     window.addEventListener("error", (event) => {
       alert(`Loi: ${event.message}`);

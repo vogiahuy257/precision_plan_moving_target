@@ -45,7 +45,7 @@ precision_land:
     descent_max_velocity: 10.0
 
     # Giới hạn tốc độ thay đổi vận tốc ngang để làm mượt lệnh điều khiển
-    slew_acc: 8.5
+    slew_acc: 3.5
 
     # =========================
     # Tham số controller Z
@@ -103,7 +103,7 @@ precision_land:
       altitude_source: "local_position_z"
 
       # Chỉ cho phép disarm khi độ cao nhỏ hơn hoặc bằng ngưỡng này
-      height: 0.02
+      height: 0.007
 
       # Chỉ cho phép disarm khi sai số ngang đủ nhỏ
       lateral_error_threshold: 10.0

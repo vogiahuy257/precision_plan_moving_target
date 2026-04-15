@@ -163,8 +163,8 @@ void KalmanFilterNode::declareParameters()
     declare_parameter<double>("q_acc_y", 0.02);
     declare_parameter<double>("q_acc_z", 0.001);
 
-    declare_parameter<double>("q_bias_vx", 0.0001);
-    declare_parameter<double>("q_bias_vy", 0.0001);
+    declare_parameter<double>("q_bias_vx", 0.0002);
+    declare_parameter<double>("q_bias_vy", 0.0002);
 
     declare_parameter<double>("r_pos_x", 0.0008);
     declare_parameter<double>("r_pos_y", 0.0008);
