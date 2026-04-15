@@ -170,8 +170,8 @@ void KalmanFilterNode::declareParameters()
     declare_parameter<double>("r_pos_y", 0.0008);
     declare_parameter<double>("r_pos_z", 0.0040);
 
-    declare_parameter<double>("r_vel_x", 0.32);
-    declare_parameter<double>("r_vel_y", 0.32);
+    declare_parameter<double>("r_vel_x", 0.28);
+    declare_parameter<double>("r_vel_y", 0.28);
 
     declare_parameter<double>("cam_offset_x", 0.0);
     declare_parameter<double>("cam_offset_y", 0.0);

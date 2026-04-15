@@ -1,28 +1,33 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+#include <rclcpp/rclcpp.hpp>
+
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <px4_msgs/msg/vehicle_command_ack.hpp>
 #include <px4_msgs/msg/vehicle_land_detected.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
-#include <px4_msgs/msg/vehicle_command.hpp>
-#include <px4_msgs/msg/vehicle_command_ack.hpp>
+#include <std_msgs/msg/string.hpp>
+
 #include <px4_ros2/components/mode.hpp>
 #include <px4_ros2/control/setpoint_types/experimental/trajectory.hpp>
 #include <px4_ros2/odometry/attitude.hpp>
 #include <px4_ros2/odometry/local_position.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/string.hpp>
 
 #include "ControlTypes.hpp"
+#include "XYVelocityController.hpp"
 #include "DescentZController.hpp"
 #include "PredictionModel.hpp"
-#include "XYVelocityController.hpp"
+#include "DisarmController.hpp"
+#include "PrecisionLandDebugLogger.hpp"
+#include "PipelineTimingCollector.hpp"
 
 class PrecisionLand : public px4_ros2::ModeBase
 {
@@ -41,10 +46,10 @@ private:
         Finished
     };
 
-    struct TargetWorldState
+    struct TargetWorldData
     {
-        Eigen::Vector3d position{Eigen::Vector3d::Zero()};
-        Eigen::Vector3d velocity{Eigen::Vector3d::Zero()};
+        Eigen::Vector3d position{0.0, 0.0, 0.0};
+        Eigen::Vector3d velocity{0.0, 0.0, 0.0};
 
         rclcpp::Time timestamp{0, 0, RCL_ROS_TIME};
         rclcpp::Time velocityTimestamp{0, 0, RCL_ROS_TIME};
@@ -55,305 +60,151 @@ private:
 
 private:
     /**
-     * Nạp toàn bộ parameter ROS cho controller.
+     * Load toàn bộ parameter và cấu hình các controller.
      *
      * Input:
-     *     Không có.
+     *     khong co
      *
      * Logic:
-     *     - declare và get toàn bộ topic/controller parameter.
-     *     - cấu hình predictor, controller XY và controller Z.
+     *     - Khai báo parameter mặc định
+     *     - Đọc parameter từ ROS2 param server
+     *     - Cấu hình XY controller, Z controller, DisarmController
+     *     - Bật/tắt debug logger
      *
      * Output:
-     *     Cập nhật member parameter nội bộ.
+     *     cập nhật các biến param nội bộ
      */
     void loadParameters();
 
     /**
-     * Callback nhận local position của UAV.
+     * Giữ UAV hover tại chỗ.
      *
      * Input:
-     *     msg: px4_msgs::msg::VehicleLocalPosition::SharedPtr
+     *     khong co
      *
      * Logic:
-     *     Lưu dist_bottom để debug/giám sát.
+     *     - Xuất setpoint velocity = 0 cho cả XYZ
      *
      * Output:
-     *     Cập nhật z_dist_bottom.
-     */
-    void vehicleLocalPositionCallback(const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg);
-
-    /**
-     * Callback trạng thái land detected từ PX4.
-     *
-     * Input:
-     *     msg: px4_msgs::msg::VehicleLandDetected::SharedPtr
-     *
-     * Logic:
-     *     Ghi nhận UAV đã chạm đất hay chưa.
-     *
-     * Output:
-     *     Cập nhật _land_detected.
-     */
-    void vehicleLandDetectedCallback(const px4_msgs::msg::VehicleLandDetected::SharedPtr msg);
-
-    /**
-     * Callback nhận attitude gimbal.
-     *
-     * Input:
-     *     msg: geometry_msgs::msg::Vector3::SharedPtr
-     *
-     * Logic:
-     *     - Lưu pitch gimbal.
-     *     - Đánh dấu gimbal ready khi pitch gần nhìn xuống.
-     *     - Tạo quaternion gimbal để dùng về sau nếu cần.
-     *
-     * Output:
-     *     Cập nhật _gimbal_pitch_deg, _gimbal_ready, _q_gimbal.
-     */
-    void gimbalAttCallback(const geometry_msgs::msg::Vector3::SharedPtr msg);
-
-    /**
-     * Callback nhận pose target trong NED/world.
-     *
-     * Input:
-     *     msg: geometry_msgs::msg::PoseStamped::SharedPtr
-     *
-     * Logic:
-     *     Lưu pose target và timestamp tương ứng.
-     *
-     * Output:
-     *     Cập nhật _targetWorld.position và _targetWorld.timestamp.
-     */
-    void targetPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
-
-    /**
-     * Callback nhận velocity target trong NED/world.
-     *
-     * Input:
-     *     msg: geometry_msgs::msg::PoseStamped::SharedPtr
-     *
-     * Logic:
-     *     Lưu velocity target và timestamp tương ứng.
-     *
-     * Output:
-     *     Cập nhật _targetWorld.velocity và _targetWorld.velocityTimestamp.
-     */
-    void targetVelocityCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
-
-    /**
-     * Hover tại chỗ khi chưa có target hoặc target bị mất.
-     *
-     * Input:
-     *     Không có.
-     *
-     * Logic:
-     *     Gửi velocity setpoint bằng 0.
-     *
-     * Output:
-     *     Publish setpoint hover cho PX4.
+     *     publish trajectory setpoint hover
      */
     void Hover();
 
     /**
-     * Chuyển state nội bộ của mode.
+     * Callback nhận target raw sau đổi sang NED.
      *
      * Input:
-     *     state: state mới.
+     *     msg: PoseStamped target raw
      *
      * Logic:
-     *     Chỉ cập nhật state hiện tại.
+     *     - Lưu giá trị raw mới nhất để phục vụ debug logger
      *
      * Output:
-     *     Cập nhật _state.
+     *     cập nhật _latestTargetRawWorld và _latestTargetRawValid
      */
-    void switchToState(State state);
+    void targetPoseRawCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
 
-    /**
-     * Đổi enum state ra chuỗi để log.
-     *
-     * Input:
-     *     state: state cần chuyển.
-     *
-     * Logic:
-     *     Trả về tên state tương ứng.
-     *
-     * Output:
-     *     std::string tên state.
-     */
-    std::string stateName(State state) const;
+    void targetPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+    void targetVelocityCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+    void vehicleLandDetectedCallback(const px4_msgs::msg::VehicleLandDetected::SharedPtr msg);
+    void vehicleLocalPositionCallback(const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg);
+    void gimbalAttCallback(const geometry_msgs::msg::Vector3::SharedPtr msg);
+    void vehicleCommandAckCallback(const px4_msgs::msg::VehicleCommandAck::SharedPtr msg);
 
-    /**
-     * Kiểm tra target timeout.
-     *
-     * Input:
-     *     Không có.
-     *
-     * Logic:
-     *     Nếu quá lâu không có pose target mới thì xem như mất target.
-     *
-     * Output:
-     *     true nếu target bị timeout.
-     */
-    bool checkTargetTimeout() const;
-
-    /**
-     * Ước lượng gia tốc XY của UAV từ sai phân vận tốc.
-     *
-     * Input:
-     *     dt_s: chu kỳ loop hiện tại.
-     *
-     * Logic:
-     *     - Tính sai phân vận tốc.
-     *     - Clamp biên gia tốc.
-     *     - Lọc low-pass để giảm nhiễu.
-     *
-     * Output:
-     *     Eigen::Vector2f gia tốc XY đã lọc.
-     */
-    Eigen::Vector2f estimateVehicleAccelerationXY(float dt_s);
-
-    /**
-     * Cập nhật log target lost/acquired.
-     *
-     * Input:
-     *     targetLost: trạng thái target hiện tại.
-     *
-     * Logic:
-     *     So sánh với trạng thái trước đó để chỉ log khi có chuyển trạng thái.
-     *
-     * Output:
-     *     Cập nhật _target_lost_prev.
-     */
-    void updateTargetLostStatus(bool targetLost);
-
-    /**
-     * Xử lý state Search.
-     *
-     * Input:
-     *     targetLost: target có đang mất hay không.
-     *
-     * Logic:
-     *     Nếu đã có target thì chuyển sang Descend, ngược lại hover.
-     *
-     * Output:
-     *     Cập nhật state hoặc setpoint hover.
-     */
     void handleSearchState(bool targetLost);
-
-    /**
-     * Xử lý state Descend.
-     *
-     * Input:
-     *     dt_s: chu kỳ loop hiện tại.
-     *     targetLost: target có đang mất hay không.
-     *
-     * Logic:
-     *     - Build input cho predictor.
-     *     - Tính future error.
-     *     - Gọi controller XY và controller Z.
-     *     - Publish setpoint cuối cùng cho PX4.
-     *
-     * Output:
-     *     Publish trajectory setpoint mới.
-     */
     void handleDescendState(float dt_s, bool targetLost);
-
-    /**
-     * Xử lý state Finished.
-     *
-     * Input:
-     *     Không có.
-     *
-     * Logic:
-     *     Báo mode hoàn thành và điều khiển gimbal ngẩng lên.
-     *
-     * Output:
-     *     Gửi lệnh hoàn thành mode.
-     */
     void handleFinishedState();
 
-    /**
-     * Tính thời gian lead để dự đoán tương lai.
-     *
-     * Input:
-     *     dt_s: chu kỳ loop hiện tại.
-     *     ctrlStartNow: thời điểm bắt đầu tính điều khiển.
-     *
-     * Logic:
-     *     Cộng tuổi dữ liệu pose/velocity, dt loop và lead thêm rồi clamp.
-     *
-     * Output:
-     *     leadDtSec dùng cho predictor.
-     */
+    void updateTargetLostStatus(bool targetLost);
+    bool checkTargetTimeout() const;
+    void switchToState(State state);
+    std::string stateName(State state) const;
+
     float computeLeadTimeSec(float dt_s, const rclcpp::Time &ctrlStartNow) const;
-
-    /**
-     * Build input cho predictor từ trạng thái UAV và target hiện tại.
-     *
-     * Input:
-     *     dt_s: chu kỳ loop hiện tại.
-     *     ctrlStartNow: thời điểm bắt đầu tính điều khiển.
-     *
-     * Logic:
-     *     Gom toàn bộ dữ liệu target, vehicle, acceleration và lead time.
-     *
-     * Output:
-     *     precision_land::PredictionInput hoàn chỉnh.
-     */
     precision_land::PredictionInput buildPredictionInput(float dt_s, const rclcpp::Time &ctrlStartNow);
+    Eigen::Vector2f estimateVehicleAccelerationXY(float dt_s);
 
-    /**
-     * Publish target tương lai để debug.
-     *
-     * Input:
-     *     stamp: timestamp debug.
-     *     targetFutureWorld: vị trí target tương lai.
-     *
-     * Logic:
-     *     Publish PoseStamped trên topic debug.
-     *
-     * Output:
-     *     Publish /debug/precision_land/target_pose_pred_world.
-     */
     void publishPredictedTargetDebug(const rclcpp::Time &stamp, const Eigen::Vector3f &targetFutureWorld);
-
-    /**
-     * Publish toàn bộ timing debug của controller.
-     *
-     * Input:
-     *     ctrlStartNow: thời điểm bắt đầu tính control.
-     *     ctrlEndNow: thời điểm tính control xong.
-     *     cmdPubNow: thời điểm publish lệnh.
-     *
-     * Logic:
-     *     Gọi helper publish JSON timing.
-     *
-     * Output:
-     *     Publish /debug_dt/precision_land.
-     */
     void publishTimingDebug(
         const rclcpp::Time &ctrlStartNow,
         const rclcpp::Time &ctrlEndNow,
         const rclcpp::Time &cmdPubNow);
 
+    /**
+     * Ghi nhóm timing vào sample debug.
+     *
+     * Input:
+     *     sample: object sample cần điền dữ liệu
+     *     ctrlStartNow: thời điểm bắt đầu xử lý control
+     *     ctrlEndNow: thời điểm kết thúc xử lý control
+     *     cmdPubNow: thời điểm publish setpoint
+     *
+     * Logic:
+     *     - Tính poseWaitDt, velWaitDt, controlProcessingDt
+     *     - Tính sendCmdDt và totalImageToCmdDt
+     *
+     * Output:
+     *     cập nhật sample.timing
+     */
+    void fillDebugTimingSample(
+        precision_land::PrecisionLandDebugSample &sample,
+        const rclcpp::Time &ctrlStartNow,
+        const rclcpp::Time &ctrlEndNow,
+        const rclcpp::Time &cmdPubNow) const;
+
+    /**
+     * Ghi 1 sample debug của vòng điều khiển hiện tại.
+     *
+     * Input:
+     *     ctrlStartNow: thời điểm bắt đầu control
+     *     ctrlEndNow: thời điểm kết thúc control
+     *     cmdPubNow: thời điểm publish command
+     *     predictionOutput: đầu ra dự đoán target tương lai
+     *     xyInput: input XY controller
+     *     xyOutput: output XY controller
+     *     disarmOutput: output DisarmController
+     *     vz: velocity setpoint trục Z cuối
+     *     altitudeNow: độ cao tuyệt đối hiện tại
+     *
+     * Logic:
+     *     - Gom toàn bộ biến cần debug vào PrecisionLandDebugSample
+     *     - Gọi _debugLogger.logSample(sample)
+     *
+     * Output:
+     *     thêm 1 dòng log vào buffer CSV nếu debug đang bật
+     */
+    void logDebugSample(
+        const rclcpp::Time &ctrlStartNow,
+        const rclcpp::Time &ctrlEndNow,
+        const rclcpp::Time &cmdPubNow,
+        const precision_land::PredictionOutput &predictionOutput,
+        const precision_land::XYControllerInput &xyInput,
+        const precision_land::XYControllerOutput &xyOutput,
+        const precision_land::DisarmControllerOutput &disarmOutput,
+        float vz,
+        float altitudeNow);
+
 private:
     rclcpp::Node &_node;
 
-    std::shared_ptr<px4_ros2::TrajectorySetpointType> _trajectory_setpoint;
-    std::shared_ptr<px4_ros2::OdometryLocalPosition> _vehicle_local_position;
-    std::shared_ptr<px4_ros2::OdometryAttitude> _vehicle_attitude;
+    std::shared_ptr<px4_ros2::TrajectorySetpointType> _trajectorySetpoint;
+    std::shared_ptr<px4_ros2::OdometryLocalPosition> _vehicleLocalPosition;
+    std::shared_ptr<px4_ros2::OdometryAttitude> _vehicleAttitude;
 
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _target_pose_sub;
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _target_velocity_sub;
-    rclcpp::Subscription<px4_msgs::msg::VehicleLandDetected>::SharedPtr _vehicle_land_detected_sub;
-    rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr _vehicle_local_pos_sub;
-    rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr _gimbal_sub;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _targetPoseRawSub;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _targetPoseSub;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _targetVelocitySub;
+    rclcpp::Subscription<px4_msgs::msg::VehicleLandDetected>::SharedPtr _vehicleLandDetectedSub;
+    rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr _vehicleLocalPosSub;
+    rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr _gimbalSub;
+    rclcpp::Subscription<px4_msgs::msg::VehicleCommandAck>::SharedPtr _vehicleCommandAckSub;
 
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr _gimbal_seq_pub;
-    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr _debug_target_pred_pub;
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr _debug_dt_pub;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr _gimbalSeqPub;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr _debugTargetPredPub;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr _debugDtPub;
+    rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr _vehicleCommandPub;
 
+    std::string _targetPoseRawTopic;
     std::string _targetPoseTopic;
     std::string _targetVelocityTopic;
     std::string _vehicleLandDetectedTopic;
@@ -361,72 +212,77 @@ private:
     std::string _gimbalCommandTopic;
     std::string _gimbalAttitudeTopic;
 
-    float _param_pid_deadband{0.05f};
-    float _param_target_timeout{3.0f};
+    float _paramPidDeadband{0.05f};
+    float _paramTargetTimeout{3.0f};
 
-    float _param_descent_kp{1.0f};
-    float _param_descent_ki{0.0f};
-    float _param_descent_kd{0.0f};
-    float _param_descent_max_velocity{3.0f};
-    float _param_slew_acc{2.5f};
+    float _paramDescentKp{0.9f};
+    float _paramDescentKi{0.01f};
+    float _paramDescentKd{0.0f};
+    float _paramDescentMaxVelocity{10.0f};
+    float _paramSlewAcc{10.0f};
 
-    float _param_land_zone_z{0.5f};
-    float _param_descent_vel{0.4f};
+    float _paramLandZoneZ{0.5f};
+    float _paramDescentVel{0.5f};
 
-    float _param_descent_gate_radius{0.3f};
-    float _param_vmin{0.45f};
-    float _param_vmax{0.8f};
+    float _paramDescentGateRadius{0.3f};
+    float _paramVmin{0.45f};
+    float _paramVmax{0.8f};
 
-    bool _param_use_predictive_error{true};
-    float _param_prediction_dt_max{0.5f};
-    float _param_control_extra_lead_sec{0.0f};
+    bool _paramUsePredictiveError{true};
+    float _paramPredictionDtMax{0.75f};
+    float _paramControlExtraLeadSec{0.25f};
 
-    float _param_predictive_acc_gain{0.0f};
-    float _param_predictive_acc_lpf_alpha{0.5f};
-    float _param_predictive_acc_max{5.0f};
+    float _paramPredictiveAccGain{0.0f};
+    float _paramPredictiveAccLpfAlpha{0.4f};
+    float _paramPredictiveAccMax{4.0f};
 
-    TargetWorldState _targetWorld;
+    bool _paramDebugLogger{false};
 
-    rclcpp::Time imageTimestamp{0, 0, RCL_ROS_TIME};
+    precision_land::XYVelocityController _xyVelocityController;
+    precision_land::DescentZController _descentZController;
+    precision_land::PredictionModel _predictionModel;
+    precision_land::DisarmController _disarmController;
+    precision_land::PrecisionLandDebugLogger _debugLogger;
+    precision_land::PipelineTimingCollector _pipelineTimingCollector;
+
+    State _state{State::Search};
+    TargetWorldData _targetWorld{};
+
+    rclcpp::Time _imageTimestamp{0, 0, RCL_ROS_TIME};
     rclcpp::Time _targetPoseRxNow{0, 0, RCL_ROS_TIME};
     rclcpp::Time _targetVelRxNow{0, 0, RCL_ROS_TIME};
 
-    State _state{State::Search};
+    bool _searchStarted{false};
+    bool _targetLostPrev{true};
 
-    bool _search_started{false};
-    bool _target_lost_prev{true};
-    bool _land_detected{false};
+    bool _distBottomValid{false};
+    float _zDistBottom{0.0f};
+
+    bool _landDetected{false};
+
+    bool _gimbalReady{false};
+    bool _gimbalValid{false};
+    float _gimbalPitchDeg{0.0f};
+    Eigen::Quaterniond _qGimbal{Eigen::Quaterniond::Identity()};
 
     bool _yawSpInit{false};
-    float _yaw_sp{0.0f};
+    float _yawSp{0.0f};
+
+    float _approachAltitude{0.0f};
 
     float _prevVehicleVelX{0.0f};
     float _prevVehicleVelY{0.0f};
     float _vehicleAccXFilt{0.0f};
     float _vehicleAccYFilt{0.0f};
     bool _prevVehicleVelValid{false};
-    float _approach_altitude{0.0f};
-    float z_dist_bottom{0.0f};
 
-    float _gimbal_pitch_deg{0.0f};
-    bool _gimbal_ready{false};
-    bool _gimbal_valid{false};
-    Eigen::Quaterniond _q_gimbal{1.0, 0.0, 0.0, 0.0};
+    Eigen::Vector3f _latestTargetRawWorld{Eigen::Vector3f::Zero()};
+    bool _latestTargetRawValid{false};
 
-    precision_land::PredictionModel _predictionModel;
-    precision_land::XYVelocityController _xyVelocityController;
-    precision_land::DescentZController _descentZController;
-    rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr vehicleCommandPub_;
-    rclcpp::Subscription<px4_msgs::msg::VehicleCommandAck>::SharedPtr vehicleCommandAckSub_;
-    rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr _vehicle_command_pub;
-    rclcpp::Subscription<px4_msgs::msg::VehicleCommandAck>::SharedPtr _vehicle_command_ack_sub;
-
-    bool _disarm_sent{false};
-
-    void publishVehicleCommand(uint16_t command, float param1, float param2);
-    void sendDisarmCommand();
-    void vehicleCommandAckCallback(const px4_msgs::msg::VehicleCommandAck::SharedPtr msg);
-    float _param_disarm_height{0.06f};
-
-    bool _dist_bottom_valid{false};
+    std::string _paramDisarmMode{"enabled"};
+    std::string _paramDisarmAltitudeSource{"dist_bottom"};
+    float _paramDisarmHeight{0.06f};
+    float _paramDisarmLateralErrorThreshold{0.10f};
+    float _paramDisarmVerticalSpeedThreshold{0.15f};
+    bool _paramDisarmAllowLandedImmediate{true};
 };

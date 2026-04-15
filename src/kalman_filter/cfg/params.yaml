@@ -5,25 +5,37 @@ kalman_filter_node:
       reset_command: "/Aruco/target_state"
       target_valid: "/target_valid"
       vehicle_odometry: "/fmu/out/vehicle_odometry"
-      relative_position_raw: "/KalmanFilter/target_pose_NED"
-      relative_position_predicted: "/KalmanFilter/target_pose_est_NED"
-      relative_velocity: "/KalmanFilter/target_velocity_est_NED"
+      gimbal_attitude: "/gimbal/state/attitude"
+
+      target_pose_raw: "/KalmanFilter/target_pose_NED"
+      target_pose_filtered: "/KalmanFilter/target_pose_est_NED"
+      target_velocity_filtered: "/KalmanFilter/target_velocity_est_NED"
 
     frame_id: "map"
+    transform.mount_mode: "belly_fixed_camera"
 
-    q_acc_x: 0.0005
-    q_acc_y: 0.0005
-    q_acc_z: 0.0010
+    q_acc_x: 0.02
+    q_acc_y: 0.02
+    q_acc_z: 0.001
 
-    q_bias_vx: 0.0002
-    q_bias_vy: 0.0002
+    q_bias_vx: 0.0001
+    q_bias_vy: 0.0001
 
-    r_pos_x: 0.000025
-    r_pos_y: 0.000025
+    r_pos_x: 0.0008
+    r_pos_y: 0.0008
     r_pos_z: 0.0040
+
+    r_vel_x: 0.25
+    r_vel_y: 0.25
 
     cam_offset_x: 0.0
     cam_offset_y: 0.0
     cam_offset_z: -0.1
 
-    transform.mount_mode: "belly_fixed_camera"
+    max_predict_dt: 0.15
+    stale_measurement_threshold_sec: 0.2
+    small_negative_dt_tolerance_sec: 0.02
+
+    bias_from_rel_vel_gain: 1.15
+    bias_from_rel_pos_gain: 0.08
+    bias_limit: 3.0

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PrecisionLand Log Viewer</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root {
+      --bg: #f6fbff;
+      --card: #ffffff;
+      --text: #16324f;
+      --muted: #5f7a96;
+      --accent: #3b82f6;
+      --border: #d9e8f7;
+      --accent2: #0f766e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .container {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .header { margin-bottom: 16px; }
+    .title { margin: 0 0 6px; font-size: 28px; font-weight: 700; }
+    .subtitle { margin: 0; color: var(--muted); }
+    .controls {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr auto auto auto;
+      gap: 12px;
+      align-items: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: 0 10px 25px rgba(40, 90, 140, 0.08);
+      margin-bottom: 16px;
+    }
+    .dropWrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .dropzone {
+      border: 2px dashed var(--accent);
+      border-radius: 16px;
+      padding: 18px;
+      text-align: center;
+      background: #eff6ff;
+      cursor: pointer;
+      transition: 0.2s ease;
+      min-height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    .dropzone.pipeline {
+      border-color: var(--accent2);
+      background: #ecfdf5;
+    }
+    .dropzone.dragover { transform: scale(1.01); }
+    .dropzone.controller.dragover { background: #dbeafe; }
+    .dropzone.pipeline.dragover { background: #d1fae5; }
+    .controlGroup { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 13px; color: var(--muted); font-weight: 600; }
+    select, button, input[type="file"] {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      font-size: 14px;
+      background: white;
+      color: var(--text);
+    }
+    button { cursor: pointer; font-weight: 600; }
+    .primary { background: var(--accent); color: white; border-color: var(--accent); }
+    .secondary { background: var(--accent2); color: white; border-color: var(--accent2); }
+    .infoBar {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: 0 10px 25px rgba(40, 90, 140, 0.06);
+    }
+    .statLabel { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .statValue { font-size: 22px; font-weight: 700; word-break: break-word; }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .tabBtn {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-weight: 700;
+    }
+    .tabBtn.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    .tabPane.hidden, .hidden { display: none; }
+    .chartGrid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: 0 10px 25px rgba(40, 90, 140, 0.06);
+    }
+    .cardTitle { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
+    .plot { width: 100%; min-height: 420px; }
+    .empty {
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: 18px;
+      padding: 36px;
+      color: var(--muted);
+      text-align: center;
+    }
+    @media (max-width: 1100px) {
+      .controls { grid-template-columns: 1fr; }
+      .dropWrap { grid-template-columns: 1fr; }
+      .infoBar { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+      .infoBar { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="title">PrecisionLand Log Viewer</h1>
+      <p class="subtitle">Kéo thả file controller CSV và pipeline timing CSV để xem biểu đồ, đánh giá hệ thống và xuất ảnh PNG.</p>
+    </div>
+
+    <div class="controls">
+      <div class="dropWrap">
+        <div id="controllerDropzone" class="dropzone controller">
+          <div><strong>Controller CSV</strong></div>
+          <div style="margin-top: 6px; color: var(--muted);">Kéo thả hoặc bấm để chọn</div>
+          <input id="controllerFileInput" type="file" accept=".csv" class="hidden" />
+        </div>
+        <div id="pipelineDropzone" class="dropzone pipeline">
+          <div><strong>Pipeline Timing CSV</strong></div>
+          <div style="margin-top: 6px; color: var(--muted);">Kéo thả hoặc bấm để chọn</div>
+          <input id="pipelineFileInput" type="file" accept=".csv" class="hidden" />
+        </div>
+      </div>
+
+      <div class="controlGroup">
+        <label for="stateFilter">Lọc state</label>
+        <select id="stateFilter">
+          <option value="ALL">Tất cả</option>
+        </select>
+      </div>
+
+      <div class="controlGroup">
+        <label for="axisFilter">Trục 2D</label>
+        <select id="axisFilter">
+          <option value="x">X</option>
+          <option value="y">Y</option>
+          <option value="z">Z</option>
+        </select>
+      </div>
+
+      <button id="renderBtn" class="primary">Vẽ lại</button>
+      <button id="exportBtn" class="secondary">Xuất PNG</button>
+      <button id="resetBtn">Xóa dữ liệu</button>
+    </div>
+
+    <div id="infoBar" class="infoBar hidden">
+      <div class="stat"><div class="statLabel">Controller file</div><div id="controllerFileName" class="statValue">-</div></div>
+      <div class="stat"><div class="statLabel">Pipeline file</div><div id="pipelineFileName" class="statValue">-</div></div>
+      <div class="stat"><div class="statLabel">Số mẫu controller</div><div id="rowCount" class="statValue">-</div></div>
+      <div class="stat"><div class="statLabel">Thời lượng</div><div id="duration" class="statValue">-</div></div>
+      <div class="stat"><div class="statLabel">State</div><div id="stateSummary" class="statValue">-</div></div>
+    </div>
+
+    <div class="tabs hidden" id="tabsBar">
+      <button class="tabBtn active" data-tab="controllerTab">Controller Charts</button>
+      <button class="tabBtn" data-tab="pipelineTab">Pipeline Timing Charts</button>
+    </div>
+
+    <div id="emptyState" class="empty">
+      Chưa có dữ liệu. Hãy kéo thả file CSV để bắt đầu.
+    </div>
+
+    <div id="controllerTab" class="tabPane hidden">
+      <div class="chartGrid">
+        <div class="card" style="order: -10;">
+          <h3 class="cardTitle">3D Trajectory: Drone / Target Estimate / Target Prediction</h3>
+          <div id="trajectoryPlot" class="plot" style="min-height: 760px;"></div>
+        </div>
+        <div class="card"><h3 class="cardTitle">Raw vs Filtered vs Predicted Kalman</h3><div id="kalmanPlot" class="plot"></div></div>
+        <div class="card"><h3 class="cardTitle">Target Velocity vs Final SP vs Drone Velocity</h3><div id="velocityPlot" class="plot"></div></div>
+        <div class="card"><h3 class="cardTitle">PID vs Feedforward vs Final Setpoint</h3><div id="pidPlot" class="plot"></div></div>
+        <div class="card"><h3 class="cardTitle">Error vs Future Error</h3><div id="errorPlot" class="plot"></div></div>
+        <div class="card"><h3 class="cardTitle">Altitude / Dist Bottom / Final SP Z / Disarm / Land Detected</h3><div id="altitudePlot" class="plot"></div></div>
+      </div>
+    </div>
+
+    <div id="pipelineTab" class="tabPane hidden">
+      <div class="chartGrid">
+        <div class="card"><h3 class="cardTitle">Node Timing</h3><div id="nodeTimingPlot" class="plot"></div></div>
+        <div class="card"><h3 class="cardTitle">Inter-node Delay</h3><div id="interNodePlot" class="plot"></div></div>
+        <div class="card"><h3 class="cardTitle">Total Image to Command Delay</h3><div id="totalDelayPlot" class="plot"></div></div>
+        <div class="card"><h3 class="cardTitle">Pipeline Delay Histogram</h3><div id="histogramPlot" class="plot"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const requiredControllerColumns = [
+      "time", "state",
+      "drone_pos_x", "drone_pos_y", "drone_pos_z",
+      "drone_vel_x", "drone_vel_y", "drone_vel_z",
+      "target_raw_x", "target_raw_y", "target_raw_z",
+      "target_est_x", "target_est_y", "target_est_z",
+      "target_pred_x", "target_pred_y", "target_pred_z",
+      "target_vel_x", "target_vel_y", "target_vel_z",
+      "error_x", "error_y", "future_error_x", "future_error_y",
+      "error_xy_norm", "future_error_xy_norm",
+      "pid_out_x", "pid_out_y",
+      "ff_x", "ff_y",
+      "final_sp_x", "final_sp_y", "final_sp_z",
+      "altitude_abs", "dist_bottom", "should_disarm", "land_detected"
+    ];
+
+    const requiredPipelineColumns = [
+      "image_stamp", "aruco_found",
+      "aruco_processing_dt", "aruco_total_node_dt",
+      "kalman_processing_dt", "kalman_measurement_dt", "kalman_predict_dt",
+      "pl_pose_wait_dt", "pl_vel_wait_dt", "pl_control_processing_dt", "pl_send_cmd_dt",
+      "dt_aruco_to_kalman", "dt_kalman_to_pl_pose", "dt_kalman_to_pl_vel", "dt_total_image_to_cmd"
+    ];
+
+    const appState = {
+      controllerFileName: "",
+      pipelineFileName: "",
+      controllerRows: [],
+      filteredControllerRows: [],
+      pipelineRows: []
+    };
+
+    const controllerFileInput = document.getElementById("controllerFileInput");
+    const pipelineFileInput = document.getElementById("pipelineFileInput");
+    const controllerDropzone = document.getElementById("controllerDropzone");
+    const pipelineDropzone = document.getElementById("pipelineDropzone");
+    const stateFilter = document.getElementById("stateFilter");
+    const axisFilter = document.getElementById("axisFilter");
+    const renderBtn = document.getElementById("renderBtn");
+    const exportBtn = document.getElementById("exportBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const infoBar = document.getElementById("infoBar");
+    const tabsBar = document.getElementById("tabsBar");
+    const emptyState = document.getElementById("emptyState");
+    const tabButtons = () => Array.from(document.querySelectorAll(".tabBtn"));
+    const tabPanes = () => Array.from(document.querySelectorAll(".tabPane"));
+
+    setupDropzone(controllerDropzone, controllerFileInput, "controller");
+    setupDropzone(pipelineDropzone, pipelineFileInput, "pipeline");
+
+    controllerFileInput.addEventListener("change", (event) => handleFile(event.target.files[0], "controller"));
+    pipelineFileInput.addEventListener("change", (event) => handleFile(event.target.files[0], "pipeline"));
+    renderBtn.addEventListener("click", () => renderAllCharts());
+    exportBtn.addEventListener("click", () => exportAllPlots());
+    resetBtn.addEventListener("click", () => resetViewer());
+    stateFilter.addEventListener("change", () => renderAllCharts());
+    axisFilter.addEventListener("change", () => renderAllCharts());
+
+    tabButtons().forEach((button) => {
+      button.addEventListener("click", () => activateTab(button.dataset.tab));
+    });
+
+    function setupDropzone(dropzone, input, type) {
+      dropzone.addEventListener("click", () => input.click());
+      dropzone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        dropzone.classList.add("dragover");
+      });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        dropzone.classList.remove("dragover");
+        handleFile(event.dataTransfer.files[0], type);
+      });
+    }
+
+    function activateTab(tabId) {
+      tabButtons().forEach((button) => {
+        button.classList.toggle("active", button.dataset.tab === tabId);
+      });
+      tabPanes().forEach((pane) => {
+        pane.classList.toggle("hidden", pane.id !== tabId);
+      });
+    }
+
+    function resetViewer() {
+      appState.controllerFileName = "";
+      appState.pipelineFileName = "";
+      appState.controllerRows = [];
+      appState.filteredControllerRows = [];
+      appState.pipelineRows = [];
+      controllerFileInput.value = "";
+      pipelineFileInput.value = "";
+      stateFilter.innerHTML = '<option value="ALL">Tất cả</option>';
+      document.getElementById("controllerFileName").textContent = "-";
+      document.getElementById("pipelineFileName").textContent = "-";
+      infoBar.classList.add("hidden");
+      tabsBar.classList.add("hidden");
+      emptyState.classList.remove("hidden");
+      tabPanes().forEach((pane) => pane.classList.add("hidden"));
+      clearPlots();
+    }
+
+    function clearPlots() {
+      [
+        "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "trajectoryPlot", "altitudePlot",
+        "nodeTimingPlot", "interNodePlot", "totalDelayPlot", "histogramPlot"
+      ].forEach((id) => Plotly.purge(id));
+    }
+
+    async function handleFile(file, type) {
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const rows = parseCsv(text);
+
+        if (type === "controller") {
+          validateColumns(rows, requiredControllerColumns);
+          appState.controllerFileName = file.name;
+          appState.controllerRows = enrichRows(rows, "time");
+          fillStateFilter();
+        } else {
+          validateColumns(rows, requiredPipelineColumns);
+          appState.pipelineFileName = file.name;
+          appState.pipelineRows = enrichRows(rows, "image_stamp");
+        }
+
+        renderAllCharts();
+      } catch (error) {
+        alert(error.message || String(error));
+      }
+    }
+
+    function parseCsv(csvText) {
+      const lines = csvText.trim().split(/\r?\n/);
+      if (lines.length < 2) throw new Error("File CSV khong co du du lieu.");
+      const headers = splitCsvLine(lines[0]);
+      const rows = [];
+
+      for (let index = 1; index < lines.length; index += 1) {
+        if (!lines[index].trim()) continue;
+        const values = splitCsvLine(lines[index]);
+        const row = {};
+        headers.forEach((header, headerIndex) => {
+          row[header] = values[headerIndex] ?? "";
+        });
+        rows.push(row);
+      }
+      return rows;
+    }
+
+    function splitCsvLine(line) {
+      const values = [];
+      let current = "";
+      let inQuotes = false;
+      for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        const nextChar = line[index + 1];
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            current += '"';
+            index += 1;
+          } else {
+            inQuotes = !inQuotes;
+          }
+          continue;
+        }
+        if (char === "," && !inQuotes) {
+          values.push(current);
+          current = "";
+          continue;
+        }
+        current += char;
+      }
+      values.push(current);
+      return values;
+    }
+
+    function validateColumns(rows, requiredColumns) {
+      const headers = Object.keys(rows[0] || {});
+      const missing = requiredColumns.filter((column) => !headers.includes(column));
+      if (missing.length > 0) throw new Error(`CSV thieu cot: ${missing.join(", ")}`);
+    }
+
+    function enrichRows(rows, timeKey) {
+      const sortedRows = [...rows].sort((rowA, rowB) => Number(rowA[timeKey]) - Number(rowB[timeKey]));
+      const firstTime = Number(sortedRows[0][timeKey]);
+      return sortedRows.map((row) => {
+        const enriched = { ...row };
+        Object.keys(enriched).forEach((key) => {
+          if (key === "state") return;
+          const value = Number(enriched[key]);
+          if (!Number.isNaN(value)) enriched[key] = value;
+        });
+        enriched.timeRel = enriched[timeKey] - firstTime;
+        return enriched;
+      });
+    }
+
+    function fillStateFilter() {
+      const stateSet = new Set(appState.controllerRows.map((row) => row.state));
+      stateFilter.innerHTML = '<option value="ALL">Tất cả</option>';
+      Array.from(stateSet).sort().forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        stateFilter.appendChild(option);
+      });
+    }
+
+    function getFilteredControllerRows() {
+      const selectedState = stateFilter.value;
+      if (selectedState === "ALL") return appState.controllerRows;
+      return appState.controllerRows.filter((row) => row.state === selectedState);
+    }
+
+    function renderAllCharts() {
+      const hasController = appState.controllerRows.length > 0;
+      const hasPipeline = appState.pipelineRows.length > 0;
+      if (!hasController && !hasPipeline) return;
+
+      appState.filteredControllerRows = getFilteredControllerRows();
+      updateInfoBar();
+      tabsBar.classList.remove("hidden");
+      emptyState.classList.add("hidden");
+
+      if (hasController) {
+        document.getElementById("controllerTab").classList.remove("hidden");
+        renderControllerCharts();
+      }
+      if (hasPipeline) {
+        document.getElementById("pipelineTab").classList.remove("hidden");
+        renderPipelineCharts();
+      }
+
+      if (hasController) activateTab("controllerTab");
+      else activateTab("pipelineTab");
+
+      infoBar.classList.remove("hidden");
+    }
+
+    function updateInfoBar() {
+      const rows = appState.filteredControllerRows;
+      const duration = rows.length > 0 ? rows[rows.length - 1].timeRel - rows[0].timeRel : 0;
+      const stateNames = [...new Set(rows.map((row) => row.state))].join(", ");
+      document.getElementById("controllerFileName").textContent = appState.controllerFileName || "-";
+      document.getElementById("pipelineFileName").textContent = appState.pipelineFileName || "-";
+      document.getElementById("rowCount").textContent = String(rows.length || 0);
+      document.getElementById("duration").textContent = `${duration.toFixed(2)} s`;
+      document.getElementById("stateSummary").textContent = stateNames || "-";
+    }
+
+    function makeLineTrace(rows, xKey, yKey, name) {
+      return { x: rows.map((row) => row[xKey]), y: rows.map((row) => row[yKey]), type: "scatter", mode: "lines", name };
+    }
+
+    function renderControllerCharts() {
+      renderKalmanPlot();
+      renderVelocityPlot();
+      renderPidPlot();
+      renderErrorPlot();
+      renderTrajectoryPlot();
+      renderAltitudePlot();
+    }
+
+    function renderKalmanPlot() {
+      const rows = appState.filteredControllerRows;
+      const axis = axisFilter.value;
+      const traces = [
+        makeLineTrace(rows, "timeRel", `target_raw_${axis}`, `target_raw_${axis}`),
+        makeLineTrace(rows, "timeRel", `target_est_${axis}`, `target_est_${axis}`),
+        makeLineTrace(rows, "timeRel", `target_pred_${axis}`, `target_pred_${axis}`),
+      ];
+      Plotly.newPlot("kalmanPlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: `${axis.toUpperCase()} [m]` }, margin: { t: 20 } }, { responsive: true });
+    }
+
+    function renderVelocityPlot() {
+      const rows = appState.filteredControllerRows;
+      const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
+      const traces = [
+        makeLineTrace(rows, "timeRel", `target_vel_${axis}`, `target_vel_${axis}`),
+        makeLineTrace(rows, "timeRel", `final_sp_${axis}`, `final_sp_${axis}`),
+        makeLineTrace(rows, "timeRel", `drone_vel_${axis}`, `drone_vel_${axis}`),
+      ];
+      Plotly.newPlot("velocityPlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: `Velocity ${axis.toUpperCase()} [m/s]` }, margin: { t: 20 } }, { responsive: true });
+    }
+
+    function renderPidPlot() {
+      const rows = appState.filteredControllerRows;
+      const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
+      const traces = [
+        makeLineTrace(rows, "timeRel", `pid_out_${axis}`, `pid_out_${axis}`),
+        makeLineTrace(rows, "timeRel", `ff_${axis}`, `ff_${axis}`),
+        makeLineTrace(rows, "timeRel", `final_sp_${axis}`, `final_sp_${axis}`),
+      ];
+      Plotly.newPlot("pidPlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: `Command ${axis.toUpperCase()} [m/s]` }, margin: { t: 20 } }, { responsive: true });
+    }
+
+    function renderErrorPlot() {
+      const rows = appState.filteredControllerRows;
+      const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
+      const traces = [
+        makeLineTrace(rows, "timeRel", `error_${axis}`, `error_${axis}`),
+        makeLineTrace(rows, "timeRel", `future_error_${axis}`, `future_error_${axis}`),
+        makeLineTrace(rows, "timeRel", "error_xy_norm", "error_xy_norm"),
+        makeLineTrace(rows, "timeRel", "future_error_xy_norm", "future_error_xy_norm"),
+      ];
+      Plotly.newPlot("errorPlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Error" }, margin: { t: 20 } }, { responsive: true });
+    }
+
+    function renderTrajectoryPlot() {
+      const rows = appState.filteredControllerRows;
+
+      const droneX = rows.map((row) => row.drone_pos_x);
+      const droneY = rows.map((row) => row.drone_pos_y);
+      const droneZ = rows.map((row) => -row.drone_pos_z);
+
+      const targetEstX = rows.map((row) => row.target_est_x);
+      const targetEstY = rows.map((row) => row.target_est_y);
+      const targetEstZ = rows.map((row) => -row.target_est_z);
+
+      const targetPredX = rows.map((row) => row.target_pred_x);
+      const targetPredY = rows.map((row) => row.target_pred_y);
+      const targetPredZ = rows.map((row) => -row.target_pred_z);
+
+      const traces = [
+        {
+          x: droneX,
+          y: droneY,
+          z: droneZ,
+          type: "scatter3d",
+          mode: "lines",
+          name: "drone_pos",
+          line: { width: 7 }
+        },
+        {
+          x: targetEstX,
+          y: targetEstY,
+          z: targetEstZ,
+          type: "scatter3d",
+          mode: "lines",
+          name: "target_est",
+          line: { width: 6 }
+        },
+        {
+          x: targetPredX,
+          y: targetPredY,
+          z: targetPredZ,
+          type: "scatter3d",
+          mode: "lines",
+          name: "target_pred",
+          line: { width: 6 }
+        },
+        {
+          x: [droneX[0]],
+          y: [droneY[0]],
+          z: [droneZ[0]],
+          type: "scatter3d",
+          mode: "markers",
+          name: "drone_start",
+          marker: { size: 5, symbol: "circle" },
+          showlegend: false
+        },
+        {
+          x: [droneX[droneX.length - 1]],
+          y: [droneY[droneY.length - 1]],
+          z: [droneZ[droneZ.length - 1]],
+          type: "scatter3d",
+          mode: "markers",
+          name: "drone_end",
+          marker: { size: 6, symbol: "diamond" },
+          showlegend: false
+        }
+      ];
+
+      Plotly.newPlot(
+        "trajectoryPlot",
+        traces,
+        {
+          scene: {
+            xaxis: {
+              title: "North X [m]",
+              showbackground: true,
+              backgroundcolor: "#f8fbff",
+              gridcolor: "#cddceb",
+              zerolinecolor: "#9db7d3"
+            },
+            yaxis: {
+              title: "East Y [m]",
+              showbackground: true,
+              backgroundcolor: "#f8fbff",
+              gridcolor: "#cddceb",
+              zerolinecolor: "#9db7d3"
+            },
+            zaxis: {
+              title: "Up = -Down [m]",
+              showbackground: true,
+              backgroundcolor: "#f8fbff",
+              gridcolor: "#cddceb",
+              zerolinecolor: "#9db7d3"
+            },
+            camera: {
+              eye: { x: 1.8, y: 1.6, z: 1.25 },
+              up: { x: 0, y: 0, z: 1 },
+              center: { x: 0, y: 0, z: 0 }
+            },
+            aspectmode: "manual",
+            aspectratio: { x: 2.4, y: 1.5, z: 1.0 }
+          },
+          legend: {
+            orientation: "h",
+            yanchor: "bottom",
+            y: 1.02,
+            xanchor: "right",
+            x: 1
+          },
+          margin: { t: 40, l: 0, r: 0, b: 0 }
+        },
+        { responsive: true }
+      );
+    }
+
+    function renderAltitudePlot() {
+      const rows = appState.filteredControllerRows;
+      const traces = [
+        makeLineTrace(rows, "timeRel", "altitude_abs", "altitude_abs"),
+        makeLineTrace(rows, "timeRel", "dist_bottom", "dist_bottom"),
+        makeLineTrace(rows, "timeRel", "final_sp_z", "final_sp_z"),
+        makeLineTrace(rows, "timeRel", "should_disarm", "should_disarm"),
+        makeLineTrace(rows, "timeRel", "land_detected", "land_detected"),
+      ];
+      Plotly.newPlot("altitudePlot", traces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Value" }, margin: { t: 20 } }, { responsive: true });
+    }
+
+    function renderPipelineCharts() {
+      const rows = appState.pipelineRows;
+      const nodeTimingTraces = [
+        makeLineTrace(rows, "timeRel", "aruco_processing_dt", "aruco_processing_dt"),
+        makeLineTrace(rows, "timeRel", "kalman_processing_dt", "kalman_processing_dt"),
+        makeLineTrace(rows, "timeRel", "pl_control_processing_dt", "pl_control_processing_dt"),
+      ];
+      Plotly.newPlot("nodeTimingPlot", nodeTimingTraces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Processing Time [s]" }, margin: { t: 20 } }, { responsive: true });
+
+      const interNodeTraces = [
+        makeLineTrace(rows, "timeRel", "dt_aruco_to_kalman", "dt_aruco_to_kalman"),
+        makeLineTrace(rows, "timeRel", "dt_kalman_to_pl_pose", "dt_kalman_to_pl_pose"),
+        makeLineTrace(rows, "timeRel", "dt_kalman_to_pl_vel", "dt_kalman_to_pl_vel"),
+      ];
+      Plotly.newPlot("interNodePlot", interNodeTraces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Inter-node Delay [s]" }, margin: { t: 20 } }, { responsive: true });
+
+      const totalDelayTraces = [
+        makeLineTrace(rows, "timeRel", "dt_total_image_to_cmd", "dt_total_image_to_cmd"),
+        makeLineTrace(rows, "timeRel", "aruco_total_node_dt", "aruco_total_node_dt"),
+      ];
+      Plotly.newPlot("totalDelayPlot", totalDelayTraces, { xaxis: { title: "Time [s]" }, yaxis: { title: "Delay [s]" }, margin: { t: 20 } }, { responsive: true });
+
+      Plotly.newPlot("histogramPlot", [{ x: rows.map((row) => row.dt_total_image_to_cmd), type: "histogram", name: "dt_total_image_to_cmd" }], { xaxis: { title: "Delay [s]" }, yaxis: { title: "Count" }, margin: { t: 20 } }, { responsive: true });
+    }
+
+    async function exportAllPlots() {
+      const plotIds = [
+        "kalmanPlot", "velocityPlot", "pidPlot", "errorPlot", "trajectoryPlot", "altitudePlot",
+        "nodeTimingPlot", "interNodePlot", "totalDelayPlot", "histogramPlot"
+      ];
+
+      for (const plotId of plotIds) {
+        const element = document.getElementById(plotId);
+        if (!element || !element.data || element.data.length === 0) continue;
+        try {
+          const url = await Plotly.toImage(element, { format: "png", width: 1400, height: 800, scale: 2 });
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${plotId}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (error) {
+          console.error(`Loi xuat PNG cho ${plotId}:`, error);
+        }
+      }
+    }
+
+    window.addEventListener("error", (event) => {
+      alert(`Loi: ${event.message}`);
+    });
+  </script>
+</body>
+</html>

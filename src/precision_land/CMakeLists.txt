@@ -22,6 +22,9 @@ add_executable(precision_land
     PredictionModel.cpp
     XYVelocityController.cpp
     DescentZController.cpp
+    DisarmController.cpp
+    PrecisionLandDebugLogger.cpp
+    PipelineTimingCollector.cpp
 )
 
 target_include_directories(precision_land PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

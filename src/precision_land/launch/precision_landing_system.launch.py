@@ -112,6 +112,9 @@ def generate_launch_description():
             executable='kalman_filter_node',
             name='kalman_filter',
             output='screen',
-            parameters=[sim_time]
+            parameters=[
+                sim_time,
+                PathJoinSubstitution([FindPackageShare('kalman_filter'), 'cfg', 'params.yaml'])
+            ]
         ),
     ])
