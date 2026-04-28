@@ -25,6 +25,7 @@ add_executable(precision_land
     DisarmController.cpp
     PrecisionLandDebugLogger.cpp
     PipelineTimingCollector.cpp
+    DisturbanceObserver.cpp
 )
 
 target_include_directories(precision_land PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

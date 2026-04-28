@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 
 namespace precision_land
 {
@@ -36,6 +37,7 @@ void XYVelocityController::configure(const XYControllerParams &params)
         }
 
         params_ = params;
+        disturbanceObserver_.configure(params_.dob);
     }
     catch (const std::exception &e)
     {
@@ -51,11 +53,18 @@ void XYVelocityController::reset()
 {
     velXIntegral_ = 0.0f;
     velYIntegral_ = 0.0f;
+
     prevErrX_ = 0.0f;
     prevErrY_ = 0.0f;
     prevErrValid_ = false;
+
     vxFilt_ = 0.0f;
     vyFilt_ = 0.0f;
+
+    prevVelocitySpXY_.setZero();
+    prevVelocitySpValid_ = false;
+
+    disturbanceObserver_.reset();
 }
 
 XYControllerOutput XYVelocityController::update(const XYControllerInput &input)
@@ -66,7 +75,9 @@ XYControllerOutput XYVelocityController::update(const XYControllerInput &input)
             !std::isfinite(input.futureErrorXY.x()) ||
             !std::isfinite(input.futureErrorXY.y()) ||
             !std::isfinite(input.targetVelocityXY.x()) ||
-            !std::isfinite(input.targetVelocityXY.y()))
+            !std::isfinite(input.targetVelocityXY.y()) ||
+            !std::isfinite(input.vehicleVelocityXY.x()) ||
+            !std::isfinite(input.vehicleVelocityXY.y()))
         {
             throw std::runtime_error("XYControllerInput chua NaN/Inf");
         }
@@ -80,22 +91,22 @@ XYControllerOutput XYVelocityController::update(const XYControllerInput &input)
         const float xp = params_.kp * errX;
         const float yp = params_.kp * errY;
 
-        if (std::abs(errX) > params_.deadband)
+        if (input.targetValid && std::abs(errX) > params_.deadband)
         {
             velXIntegral_ += errX * dt;
         }
         else
         {
-            velXIntegral_ = 0.0f;
+            velXIntegral_ *= 0.9f;
         }
 
-        if (std::abs(errY) > params_.deadband)
+        if (input.targetValid && std::abs(errY) > params_.deadband)
         {
             velYIntegral_ += errY * dt;
         }
         else
         {
-            velYIntegral_ = 0.0f;
+            velYIntegral_ *= 0.9f;
         }
 
         float xi = 0.0f;
@@ -111,7 +122,7 @@ XYControllerOutput XYVelocityController::update(const XYControllerInput &input)
 
         float xd = 0.0f;
         float yd = 0.0f;
-        if (params_.kd > 1e-6f && prevErrValid_)
+        if (input.targetValid && params_.kd > 1e-6f && prevErrValid_)
         {
             xd = params_.kd * (errX - prevErrX_) / dt;
             yd = params_.kd * (errY - prevErrY_) / dt;
@@ -119,10 +130,11 @@ XYControllerOutput XYVelocityController::update(const XYControllerInput &input)
 
         prevErrX_ = errX;
         prevErrY_ = errY;
-        prevErrValid_ = true;
+        prevErrValid_ = input.targetValid;
 
-        output.feedbackXY.x() = std::clamp(xp + xi + xd, -params_.maxVelocity, params_.maxVelocity);
-        output.feedbackXY.y() = std::clamp(yp + yi + yd, -params_.maxVelocity, params_.maxVelocity);
+        output.feedbackXY.x() = xp + xi + xd;
+        output.feedbackXY.y() = yp + yi + yd;
+        output.feedbackXY = clampVectorNorm(output.feedbackXY, params_.maxVelocity);
 
         output.commandRawXY = output.feedbackXY;
         if (input.useTargetFeedforward)
@@ -130,19 +142,54 @@ XYControllerOutput XYVelocityController::update(const XYControllerInput &input)
             output.commandRawXY += input.targetVelocityXY;
         }
 
-        output.commandRawXY.x() = std::clamp(output.commandRawXY.x(), -params_.maxVelocity, params_.maxVelocity);
-        output.commandRawXY.y() = std::clamp(output.commandRawXY.y(), -params_.maxVelocity, params_.maxVelocity);
+        output.commandRawXY = clampVectorNorm(output.commandRawXY, params_.maxVelocity);
+        output.commandBeforeDobXY = output.commandRawXY;
+
+        DisturbanceObserverInput dobInput{};
+        dobInput.dtSec = dt;
+        dobInput.targetValid = input.targetValid;
+        dobInput.measuredVelocityXY = input.vehicleVelocityXY;
+
+        if (prevVelocitySpValid_)
+        {
+            dobInput.referenceVelocityXY = prevVelocitySpXY_;
+        }
+        else
+        {
+            dobInput.referenceVelocityXY = output.commandRawXY;
+        }
+
+        const DisturbanceObserverOutput dobOutput = disturbanceObserver_.update(dobInput);
+
+        output.disturbanceHatXY = dobOutput.estimatedDisturbanceXY;
+        output.disturbanceCompXY = dobOutput.compensationXY;
+
+        output.commandRawXY += output.disturbanceCompXY;
+        output.commandRawXY = clampVectorNorm(output.commandRawXY, params_.maxVelocity);
+        output.commandAfterDobXY = output.commandRawXY;
 
         vxFilt_ = applySlew(output.commandRawXY.x(), vxFilt_, params_.slewAcc, dt);
         vyFilt_ = applySlew(output.commandRawXY.y(), vyFilt_, params_.slewAcc, dt);
 
-        output.velocitySpXY.x() = std::clamp(vxFilt_, -params_.maxVelocity, params_.maxVelocity);
-        output.velocitySpXY.y() = std::clamp(vyFilt_, -params_.maxVelocity, params_.maxVelocity);
+        output.velocitySpXY.x() = vxFilt_;
+        output.velocitySpXY.y() = vyFilt_;
+        output.velocitySpXY = clampVectorNorm(output.velocitySpXY, params_.maxVelocity);
+
+        prevVelocitySpXY_ = output.velocitySpXY;
+        prevVelocitySpValid_ = true;
 
         if (!std::isfinite(output.feedbackXY.x()) ||
             !std::isfinite(output.feedbackXY.y()) ||
             !std::isfinite(output.commandRawXY.x()) ||
             !std::isfinite(output.commandRawXY.y()) ||
+            !std::isfinite(output.commandBeforeDobXY.x()) ||
+            !std::isfinite(output.commandBeforeDobXY.y()) ||
+            !std::isfinite(output.disturbanceHatXY.x()) ||
+            !std::isfinite(output.disturbanceHatXY.y()) ||
+            !std::isfinite(output.disturbanceCompXY.x()) ||
+            !std::isfinite(output.disturbanceCompXY.y()) ||
+            !std::isfinite(output.commandAfterDobXY.x()) ||
+            !std::isfinite(output.commandAfterDobXY.y()) ||
             !std::isfinite(output.velocitySpXY.x()) ||
             !std::isfinite(output.velocitySpXY.y()))
         {
@@ -193,6 +240,40 @@ float XYVelocityController::applySlew(float commandVelocity, float previousVeloc
     catch (...)
     {
         throw std::runtime_error("XYVelocityController::applySlew gap loi khong xac dinh");
+    }
+}
+
+Eigen::Vector2f XYVelocityController::clampVectorNorm(const Eigen::Vector2f &value, float maxNorm) const
+{
+    try
+    {
+        if (!std::isfinite(value.x()) ||
+            !std::isfinite(value.y()) ||
+            !std::isfinite(maxNorm))
+        {
+            throw std::runtime_error("tham so clampVectorNorm chua NaN/Inf");
+        }
+
+        if (maxNorm <= 0.0f)
+        {
+            return Eigen::Vector2f::Zero();
+        }
+
+        const float norm = value.norm();
+        if (norm <= maxNorm || norm < 1e-6f)
+        {
+            return value;
+        }
+
+        return value * (maxNorm / norm);
+    }
+    catch (const std::exception &e)
+    {
+        throw std::runtime_error(std::string("XYVelocityController::clampVectorNorm loi: ") + e.what());
+    }
+    catch (...)
+    {
+        throw std::runtime_error("XYVelocityController::clampVectorNorm gap loi khong xac dinh");
     }
 }
 } // namespace precision_land

@@ -7,7 +7,7 @@ import time
 import os
 
 TOPIC = "/land_pad/cmd_vel"
-RATE = 10
+RATE = 100
 DURATION = 100
 SPEED = 3.0
 

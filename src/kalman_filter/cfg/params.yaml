@@ -1,101 +1,46 @@
-kalman_filter_node:
+kalman_filter:
   ros__parameters:
-    topics:
-      # Topic đầu vào vị trí target từ node ArUco
-      input_target_pose: "/Aruco/target_pose_FRD"
+    debug: false
+    debug_csv_path: "kalman_logs/"
+    pose_timeout_s: 3.0
 
-      # Topic reset trạng thái Kalman khi mất/gặp lại target
-      reset_command: "/Aruco/target_state"
+    topics.input_target_pose: "/Aruco/target_pose_FRD"
+    topics.reset_command: "/Aruco/target_state"
+    topics.target_valid: "/target_valid"
+    topics.vehicle_odometry: "/fmu/out/vehicle_odometry"
+    topics.vehicle_local_position: "/fmu/out/vehicle_local_position_v1"
+    topics.relative_position_raw: "/KalmanFilter/target_pose_NED"
+    topics.relative_position_predicted: "/KalmanFilter/target_pose_est_NED"
+    topics.relative_velocity: "/KalmanFilter/target_velocity_est_NED"
 
-      # Topic báo target còn hợp lệ hay không
-      target_valid: "/target_valid"
-
-      # Odometry của drone từ PX4 để đổi hệ tọa độ và tính vận tốc tương đối
-      vehicle_odometry: "/fmu/out/vehicle_odometry"
-
-      # Góc gimbal hiện tại để hỗ trợ biến đổi tọa độ camera -> thân drone -> NED
-      gimbal_attitude: "/gimbal/state/attitude"
-
-      # Pose target sau khi đổi sang hệ NED nhưng chưa qua Kalman hoàn toàn
-      target_pose_raw: "/KalmanFilter/target_pose_NED"
-
-      # Pose target sau khi lọc Kalman trong hệ NED
-      target_pose_filtered: "/KalmanFilter/target_pose_est_NED"
-
-      # Vận tốc target sau khi lọc Kalman trong hệ NED
-      target_velocity_filtered: "/KalmanFilter/target_velocity_est_NED"
-
-    # Frame chuẩn đầu ra của target sau biến đổi tọa độ
     frame_id: "map"
 
-    # Kiểu gắn camera trên drone
-    # belly_fixed_camera: camera gắn dưới bụng drone, hướng cố định theo thân
-    transform.mount_mode: "belly_fixed_camera"
-
-    # Nhiễu quá trình theo gia tốc trên trục X
-    # Tăng lên -> Kalman tin mô hình chuyển động thay đổi nhanh hơn, phản ứng nhanh hơn nhưng dễ nhiễu hơn
+    # =========================
+    # Process noise Q
+    # Gia toc bat dinh cua target
+    # Tang q_acc -> Kalman bam measurement nhanh hon nhung co the nhieu hon
+    # Giam q_acc -> output muot hon nhung de tre pha hon
+    # =========================
     q_acc_x: 0.018
-
-    # Nhiễu quá trình theo gia tốc trên trục Y
     q_acc_y: 0.018
+    q_acc_z: 0.00018
 
-    # Nhiễu quá trình theo gia tốc trên trục Z
-    # Để nhỏ hơn vì trục Z thường ít thay đổi mạnh hơn X,Y trong bài toán này
-    q_acc_z: 0.001
+    # =========================
+    # Measurement noise R co ban
+    # Day la phuong sai cua phep do position sau transform camera -> world
+    # Gia tri cang lon thi Kalman cang it tin camera
+    # =========================
+    r_pos_x: 0.008
+    r_pos_y: 0.008
+    r_pos_z: 0.000012
 
-    # Nhiễu quá trình cho bias vận tốc trục X
-    # Dùng để Kalman tự bù sai lệch vận tốc ước lượng theo thời gian
-    q_bias_vx: 0.0001
+    dynamic_r.enable: true
+    dynamic_r.near_range_m: 0.7
+    dynamic_r.near_noise_gain: 0.08
+    dynamic_r.max_extra_r_xy: 0.20
+    dynamic_r.min_range_m: 0.1
 
-    # Nhiễu quá trình cho bias vận tốc trục Y
-    q_bias_vy: 0.0001
-
-    # Nhiễu đo vị trí trên trục X
-    # Giá trị nhỏ -> tin measurement nhiều hơn, bám nhanh hơn nhưng dễ rung hơn
-    r_pos_x: 0.003
-
-    # Nhiễu đo vị trí trên trục Y
-    r_pos_y: 0.003
-
-    # Nhiễu đo vị trí trên trục Z
-    # Thường để lớn hơn X,Y vì ước lượng chiều sâu hay độ cao thường kém ổn định hơn
-    r_pos_z: 0.0040
-
-    # Nhiễu đo vận tốc trục X
-    # Vì vận tốc thường tính gián tiếp từ sai phân nên khá nhiễu, thường đặt lớn hơn r_pos
-    r_vel_x: 0.38
-
-    # Nhiễu đo vận tốc trục Y
-    r_vel_y: 0.38
-
-    # Độ lệch vị trí camera so với tâm drone theo trục X
-    cam_offset_x: 0.0
-
-    # Độ lệch vị trí camera so với tâm drone theo trục Y
-    cam_offset_y: 0.0
-
-    # Độ lệch vị trí camera so với tâm drone theo trục Z
-    # Âm nghĩa là camera nằm thấp hơn tâm drone
-    cam_offset_z: -0.1
-
-    # Giới hạn dt lớn nhất dùng cho bước predict
-    # Tránh trường hợp frame đến trễ làm Kalman dự đoán nhảy quá mạnh
-    max_predict_dt: 0.15
-
-    # Nếu measurement cũ hơn ngưỡng này thì xem là stale, không nên dùng mạnh cho update
-    stale_measurement_threshold_sec: 0.2
-
-    # Cho phép một sai số âm nhỏ của dt do lệch timestamp giữa các node
-    # Tránh reset/filter lỗi khi timestamp bị lệch rất ít
-    small_negative_dt_tolerance_sec: 0.02
-
-    # Hệ số sinh bias từ vận tốc tương đối
-    # Tăng lên -> bù chuyển động target mạnh hơn, nhưng quá lớn dễ overshoot
-    bias_from_rel_vel_gain: 1.25
-
-    # Hệ số sinh bias từ sai số vị trí tương đối
-    # Dùng để bù nhẹ theo độ lệch vị trí hiện tại
-    bias_from_rel_pos_gain: 0.08
-
-    # Giới hạn biên độ bias tối đa để tránh bù quá mạnh gây mất ổn định
-    bias_limit: 3.0
+    transform.mount_mode: "belly_fixed_camera"
+    transform.camera_offset_x: 0.0
+    transform.camera_offset_y: 0.0
+    transform.camera_offset_z: -0.1

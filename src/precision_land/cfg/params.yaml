@@ -33,19 +33,47 @@ precision_land:
     target_timeout: 3.0
 
     # Gain P của controller XY
-    descent_kp_pid: 0.2
+    descent_kp_pid: 0.5
 
     # Gain I của controller XY
-    descent_ki_pid: 0.01
+    descent_ki_pid: 0.0
 
     # Gain D của controller XY
-    descent_kd_pid: 0.2
+    descent_kd_pid: 0.0
 
     # Giới hạn vận tốc ngang lớn nhất mà controller XY được phép xuất ra
     descent_max_velocity: 10.0
 
     # Giới hạn tốc độ thay đổi vận tốc ngang để làm mượt lệnh điều khiển
     slew_acc: 10.0
+
+    # =========================
+    # Disturbance Observer
+    # =========================
+
+    # Bộ quan sát nhiễu dùng để ước lượng sai lệch vận tốc XY do gió / trễ động học / nhiễu ngoài.
+    # Output của DOB sẽ được cộng thêm vào velocity setpoint XY sau PID + feedforward.
+    dob:
+      # Bật/tắt Disturbance Observer
+      enabled: true
+
+      # Hằng số thời gian lọc nhiễu.
+      # Giá trị lớn hơn -> bù mượt hơn nhưng phản ứng chậm hơn.
+      # Giá trị nhỏ hơn -> phản ứng nhanh hơn nhưng dễ học nhiễu/rung.
+      tau_sec: 1.2
+
+      # Hệ số bù nhiễu.
+      # 0.0 nghĩa là chỉ quan sát, không bù.
+      # 1.0 nghĩa là bù toàn bộ disturbance_hat.
+      gain: 0.45
+
+      # Giới hạn độ lớn vector disturbance_hat XY.
+      # Đơn vị tương đương m/s vì DOB hiện tại đang observer ở mức velocity.
+      max_bias: 1.5
+
+      # Deadband cho residual vận tốc.
+      # Sai lệch nhỏ hơn ngưỡng này sẽ không được observer học để tránh bù nhiễu nhỏ.
+      deadband: 0.12
 
     # =========================
     # Tham số controller Z
@@ -81,6 +109,7 @@ precision_land:
     control_extra_lead_sec: 0.25
 
     # Hệ số dùng gia tốc UAV trong mô hình prediction
+    # dang test với gain = 0 để chỉ dùng mô hình dự đoán đơn giản dựa trên vận tốc hiện tại, không tính đến gia tốc
     predictive_acc_gain: 0.0
 
     # Hệ số low-pass cho gia tốc UAV ước lượng từ velocity

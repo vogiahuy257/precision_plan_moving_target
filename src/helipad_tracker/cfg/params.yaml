@@ -1,0 +1,27 @@
+helipad_tracker:
+  ros__parameters:
+    debug: false
+
+    # Model đặt trong thư mục helipad_tracker/model/detect.pt
+    # Nếu đã install bằng colcon, path relative này sẽ được resolve trong package share.
+    model_path: "model/detect.pt"
+    conf_threshold: 0.5
+    imgsz: 640
+
+    marker_size_w: 0.5
+    marker_size_h: 0.5
+
+    image_topic: "/world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image"
+    camera_info_topic: "/world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/camera_info"
+
+    output_pose_topic: "/Helipad/target_pose_FRD"
+    output_state_topic: "/Helipad/target_state"
+    output_image_topic: "/Helipad/image_proc"
+    debug_dt_topic: "/debug_dt/helipad"
+
+    marker_timeout_s: 5.0
+    frame_id: "camera_frd"
+
+    # Nếu chạy trên máy có màn hình thì có thể bật true.
+    # Nếu chạy headless/Gazebo server thì để false.
+    show_image: false

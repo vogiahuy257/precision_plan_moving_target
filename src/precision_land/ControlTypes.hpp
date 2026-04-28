@@ -2,22 +2,50 @@
 
 #include <Eigen/Core>
 
+#include <cstdint>
+#include <string>
+
 namespace precision_land
 {
-//==== Common types ====
+// ==== Common state types ====
 struct TargetState
 {
     Eigen::Vector3f positionWorld{0.0f, 0.0f, 0.0f};
     Eigen::Vector3f velocityWorld{0.0f, 0.0f, 0.0f};
     bool hasVelocity{false};
 };
-//==== Prediction related types ====
+
 struct VehicleState
 {
     Eigen::Vector3f positionWorld{0.0f, 0.0f, 0.0f};
     Eigen::Vector3f velocityWorld{0.0f, 0.0f, 0.0f};
     Eigen::Vector2f accelerationXY{0.0f, 0.0f};
 };
+
+// ==== Disturbance Observer related types ====
+struct DisturbanceObserverParams
+{
+    bool enabled{false};
+    float tauSec{1.2f};
+    float gain{0.5f};
+    float maxBias{1.5f};
+    float deadband{0.10f};
+};
+
+struct DisturbanceObserverInput
+{
+    Eigen::Vector2f referenceVelocityXY{0.0f, 0.0f};
+    Eigen::Vector2f measuredVelocityXY{0.0f, 0.0f};
+    bool targetValid{false};
+    float dtSec{0.0f};
+};
+
+struct DisturbanceObserverOutput
+{
+    Eigen::Vector2f estimatedDisturbanceXY{0.0f, 0.0f};
+    Eigen::Vector2f compensationXY{0.0f, 0.0f};
+};
+
 // ==== Prediction related types ====
 struct PredictionInput
 {
@@ -43,13 +71,17 @@ struct XYControllerParams
     float deadband{0.0f};
     float maxVelocity{0.0f};
     float slewAcc{0.0f};
+
+    DisturbanceObserverParams dob{};
 };
 
 struct XYControllerInput
 {
     Eigen::Vector2f futureErrorXY{0.0f, 0.0f};
     Eigen::Vector2f targetVelocityXY{0.0f, 0.0f};
+    Eigen::Vector2f vehicleVelocityXY{0.0f, 0.0f};
     bool useTargetFeedforward{false};
+    bool targetValid{false};
     float dtSec{0.0f};
 };
 
@@ -58,9 +90,14 @@ struct XYControllerOutput
     Eigen::Vector2f velocitySpXY{0.0f, 0.0f};
     Eigen::Vector2f feedbackXY{0.0f, 0.0f};
     Eigen::Vector2f commandRawXY{0.0f, 0.0f};
+
+    Eigen::Vector2f commandBeforeDobXY{0.0f, 0.0f};
+    Eigen::Vector2f disturbanceHatXY{0.0f, 0.0f};
+    Eigen::Vector2f disturbanceCompXY{0.0f, 0.0f};
+    Eigen::Vector2f commandAfterDobXY{0.0f, 0.0f};
 };
 
-// ==== Z control and disarm related types ====
+// ==== Z control related types ====
 struct ZControllerParams
 {
     float landZoneZ{0.10f};
@@ -69,7 +106,6 @@ struct ZControllerParams
     float vmax{0.25f};
     float descentVel{0.12f};
 
-    // Ngưỡng quyết định disarm an toàn
     float disarmHeight{0.06f};
 };
 
@@ -94,8 +130,8 @@ enum class DisarmAltitudeSource : uint8_t
 
 enum class DisarmMode : uint8_t
 {
-    Disabled,   // không dùng disarm chủ động
-    Enabled     // cho phép disarm chủ động
+    Disabled,
+    Enabled
 };
 
 enum class DisarmDecisionStatus : uint8_t
@@ -110,73 +146,77 @@ enum class DisarmDecisionStatus : uint8_t
 
 struct DisarmControllerParams
 {
-    DisarmMode mode = DisarmMode::Enabled;
-    DisarmAltitudeSource altitudeSource = DisarmAltitudeSource::DistBottom;
-    float disarmHeight = 0.06f;
-    float lateralErrorThreshold = 0.10f;
-    float verticalSpeedThreshold = 0.15f;
-    bool allowLandedImmediateDisarm = true;
+    DisarmMode mode{DisarmMode::Enabled};
+    DisarmAltitudeSource altitudeSource{DisarmAltitudeSource::DistBottom};
+    float disarmHeight{0.06f};
+    float lateralErrorThreshold{0.10f};
+    float verticalSpeedThreshold{0.15f};
+    bool allowLandedImmediateDisarm{true};
 };
 
 struct DisarmControllerInput
 {
-    bool distBottomValid = false;
-    float distBottom = 0.0f;
+    bool distBottomValid{false};
+    float distBottom{0.0f};
 
-    bool localPositionZValid = false;
-    float localPositionZ = 0.0f;
+    bool localPositionZValid{false};
+    float localPositionZ{0.0f};
 
-    float lateralError = 0.0f;
-    float verticalSpeedAbs = 0.0f;
-    bool landed = false;
+    float lateralError{0.0f};
+    float verticalSpeedAbs{0.0f};
+    bool landed{false};
 };
 
 struct DisarmControllerOutput
 {
-    bool shouldSendDisarm = false;
-    bool selectedAltitudeValid = false;
-    float selectedAltitude = 0.0f;
-    DisarmDecisionStatus status = DisarmDecisionStatus::Idle;
+    bool shouldSendDisarm{false};
+    bool selectedAltitudeValid{false};
+    float selectedAltitude{0.0f};
+    DisarmDecisionStatus status{DisarmDecisionStatus::Idle};
 };
 
 // ==== Debug logging related types ====
 struct PrecisionLandTimingDebug
 {
-    double poseWaitDt = -1.0;
-    double velWaitDt = -1.0;
-    double controlProcessingDt = -1.0;
-    double sendCmdDt = -1.0;
-    double totalImageToCmdDt = -1.0;
+    double poseWaitDt{-1.0};
+    double velWaitDt{-1.0};
+    double controlProcessingDt{-1.0};
+    double sendCmdDt{-1.0};
+    double totalImageToCmdDt{-1.0};
 };
 
 struct PrecisionLandDebugSample
 {
-    double timeSec = 0.0;
-    std::string state = "Unknown";
+    double timeSec{0.0};
+    std::string state{"Unknown"};
 
-    Eigen::Vector3f dronePos = Eigen::Vector3f::Zero();
-    Eigen::Vector3f droneVel = Eigen::Vector3f::Zero();
+    Eigen::Vector3f dronePos{Eigen::Vector3f::Zero()};
+    Eigen::Vector3f droneVel{Eigen::Vector3f::Zero()};
 
-    Eigen::Vector3f targetRaw = Eigen::Vector3f::Zero();
-    Eigen::Vector3f targetEst = Eigen::Vector3f::Zero();
-    Eigen::Vector3f targetPred = Eigen::Vector3f::Zero();
-    Eigen::Vector3f targetVel = Eigen::Vector3f::Zero();
+    Eigen::Vector3f targetRaw{Eigen::Vector3f::Zero()};
+    Eigen::Vector3f targetEst{Eigen::Vector3f::Zero()};
+    Eigen::Vector3f targetPred{Eigen::Vector3f::Zero()};
+    Eigen::Vector3f targetVel{Eigen::Vector3f::Zero()};
 
-    Eigen::Vector2f errorXY = Eigen::Vector2f::Zero();
-    Eigen::Vector2f futureErrorXY = Eigen::Vector2f::Zero();
+    Eigen::Vector2f errorXY{Eigen::Vector2f::Zero()};
+    Eigen::Vector2f futureErrorXY{Eigen::Vector2f::Zero()};
 
-    Eigen::Vector2f pidOutXY = Eigen::Vector2f::Zero();
-    Eigen::Vector2f ffXY = Eigen::Vector2f::Zero();
+    Eigen::Vector2f pidOutXY{Eigen::Vector2f::Zero()};
+    Eigen::Vector2f ffXY{Eigen::Vector2f::Zero()};
 
-    Eigen::Vector3f finalSp = Eigen::Vector3f::Zero();
+    Eigen::Vector2f commandBeforeDobXY{Eigen::Vector2f::Zero()};
+    Eigen::Vector2f disturbanceHatXY{Eigen::Vector2f::Zero()};
+    Eigen::Vector2f disturbanceCompXY{Eigen::Vector2f::Zero()};
+    Eigen::Vector2f commandAfterDobXY{Eigen::Vector2f::Zero()};
 
-    float altitudeAbs = 0.0f;
-    float distBottom = -1.0f;
+    Eigen::Vector3f finalSp{Eigen::Vector3f::Zero()};
 
-    bool shouldDisarm = false;
-    bool landDetected = false;
+    float altitudeAbs{0.0f};
+    float distBottom{-1.0f};
+
+    bool shouldDisarm{false};
+    bool landDetected{false};
 
     PrecisionLandTimingDebug timing{};
 };
-
 } // namespace precision_land

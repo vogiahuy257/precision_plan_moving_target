@@ -77,15 +77,26 @@ def generate_launch_description():
         ),
 
         Node(
-            package='aruco_tracker',
-            executable='aruco_tracker',
-            name='aruco_tracker',
+            package='helipad_tracker',
+            executable='helipad_detector_node.py',
+            name='helipad_tracker',
             output='screen',
             parameters=[
                 sim_time,
-                PathJoinSubstitution([FindPackageShare('aruco_tracker'), 'cfg', 'params.yaml'])
-            ]
+                PathJoinSubstitution([FindPackageShare('helipad_tracker'), 'cfg', 'params.yaml']),
+            ],
         ),
+
+        # Node(
+        #     package='aruco_tracker',
+        #     executable='aruco_tracker',
+        #     name='aruco_tracker',
+        #     output='screen',
+        #     parameters=[
+        #         sim_time,
+        #         PathJoinSubstitution([FindPackageShare('aruco_tracker'), 'cfg', 'params.yaml'])
+        #     ]
+        # ),
 
         Node(
             package='precision_land',

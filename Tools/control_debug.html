@@ -191,6 +191,9 @@
       width: 100%;
       min-height: 420px;
     }
+    .plot.comparePlot {
+      min-height: 760px;
+    }
     .plot.large3d {
       min-height: 780px;
     }
@@ -258,7 +261,6 @@
             <select id="axisFilter">
               <option value="x">X</option>
               <option value="y">Y</option>
-              <option value="z">Z</option>
             </select>
           </div>
 
@@ -301,8 +303,20 @@
               <div id="velocityPlot" class="plot"></div>
             </div>
             <div class="card">
-              <h3 class="cardTitle">Controller vs Error (Single Plot)</h3>
-              <div id="controllerErrorMergedPlot" class="plot"></div>
+              <h3 class="cardTitle">Tracking Error Response</h3>
+              <div id="errorResponsePlot" class="plot"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">Control Components / Saturation</h3>
+              <div id="controlComponentPlot" class="plot"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">Final SP XY vs Future Error XY</h3>
+              <div id="spFutureErrorPlot" class="plot comparePlot"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">Error-Command Phase Plot</h3>
+              <div id="phasePlot" class="plot"></div>
             </div>
             <div class="card">
               <h3 class="cardTitle">Altitude / Dist Bottom / Final SP Z / Disarm / Land Detected</h3>
@@ -439,7 +453,7 @@
 
     function clearPlots() {
       [
-        "trajectoryPlot", "kalmanPlot", "velocityPlot", "controllerErrorMergedPlot", "altitudePlot",
+        "trajectoryPlot", "kalmanPlot", "velocityPlot", "errorResponsePlot", "controlComponentPlot", "spFutureErrorPlot", "phasePlot", "altitudePlot",
         "bottleneckPlot", "cumulativePlot"
       ].forEach((id) => Plotly.purge(id));
     }
@@ -597,8 +611,11 @@
     function renderControllerCharts() {
       renderTrajectoryPlot();
       renderKalmanPlot();
+      renderErrorResponsePlot();
+      renderControlComponentPlot();
+      renderSpFutureErrorPlot();
       renderVelocityPlot();
-      renderControllerErrorMergedPlot();
+      renderPhasePlot();
       renderAltitudePlot();
     }
 
@@ -686,51 +703,354 @@
       }, { responsive: true });
     }
 
-    function renderControllerErrorMergedPlot() {
+    function renderErrorResponsePlot() {
       const rows = appState.filteredControllerRows;
-      const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
+      const axis = axisFilter.value;
 
+      Plotly.newPlot("errorResponsePlot", [
+        makeLineTrace(rows, "timeRel", `error_${axis}`, `error_${axis}`),
+        makeLineTrace(rows, "timeRel", `future_error_${axis}`, `future_error_${axis}`),
+        {
+          x: rows.map((row) => row.timeRel),
+          y: rows.map((row) => Math.abs(Number(row[`error_${axis}`]))),
+          type: "scatter",
+          mode: "lines",
+          name: `abs_error_${axis}`,
+          line: { dash: "dot" }
+        }
+      ], {
+        xaxis: { title: "Time [s]" },
+        yaxis: { title: `Tracking error ${axis.toUpperCase()} [m]` },
+        legend: { orientation: "h", y: 1.1, x: 0 },
+        margin: { t: 50, l: 70, r: 20, b: 50 },
+        shapes: [{
+          type: "line",
+          x0: rows[0]?.timeRel ?? 0,
+          x1: rows[rows.length - 1]?.timeRel ?? 0,
+          y0: 0,
+          y1: 0,
+          line: { dash: "dash", width: 1, color: "#94a3b8" }
+        }]
+      }, { responsive: true, displaylogo: false });
+    }
+
+    function renderControlComponentPlot() {
+      const rows = appState.filteredControllerRows;
+      const axis = axisFilter.value;
       const pidPlusFfRows = rows.map((row) => ({
         timeRel: row.timeRel,
-        pid_plus_ff: Number(row[`pid_out_${axis}`]) + Number(row[`ff_${axis}`])
+        pid_plus_ff: Number(row[`pid_out_${axis}`]) + Number(row[`ff_${axis}`]),
+        final_sp: Number(row[`final_sp_${axis}`])
       }));
 
-      const traces = [
-        {
-          x: rows.map((row) => row.timeRel),
-          y: rows.map((row) => row[`pid_out_${axis}`]),
-          type: "scatter",
-          mode: "lines",
-          name: `pid_out_${axis}`
-        },
-        {
-          x: rows.map((row) => row.timeRel),
-          y: rows.map((row) => row[`ff_${axis}`]),
-          type: "scatter",
-          mode: "lines",
-          name: `ff_${axis}`
-        },
+      Plotly.newPlot("controlComponentPlot", [
+        makeLineTrace(rows, "timeRel", `pid_out_${axis}`, `pid_out_${axis}`),
+        makeLineTrace(rows, "timeRel", `ff_${axis}`, `ff_${axis}`),
         {
           x: pidPlusFfRows.map((row) => row.timeRel),
           y: pidPlusFfRows.map((row) => row.pid_plus_ff),
           type: "scatter",
           mode: "lines",
-          name: `final_sp_control_${axis}`
+          name: `pid_plus_ff_${axis}`
         },
+        makeLineTrace(rows, "timeRel", `final_sp_${axis}`, `final_sp_${axis}`),
         {
-          x: rows.map((row) => row.timeRel),
-          y: rows.map((row) => row[`error_${axis}`]),
+          x: pidPlusFfRows.map((row) => row.timeRel),
+          y: pidPlusFfRows.map((row) => row.final_sp - row.pid_plus_ff),
           type: "scatter",
           mode: "lines",
-          name: `error_${axis}`
+          name: `final_sp_minus_pidff_${axis}`,
+          line: { dash: "dot" }
+        }
+      ], {
+        xaxis: { title: "Time [s]" },
+        yaxis: { title: `Control command ${axis.toUpperCase()} [m/s]` },
+        legend: { orientation: "h", y: 1.12, x: 0 },
+        margin: { t: 60, l: 70, r: 20, b: 50 },
+        shapes: [{
+          type: "line",
+          x0: rows[0]?.timeRel ?? 0,
+          x1: rows[rows.length - 1]?.timeRel ?? 0,
+          y0: 0,
+          y1: 0,
+          line: { dash: "dash", width: 1, color: "#94a3b8" }
+        }]
+      }, { responsive: true, displaylogo: false });
+    }
+
+    function renderSpFutureErrorPlot() {
+      const rows = appState.filteredControllerRows;
+      if (!rows || rows.length === 0) return;
+
+      const timeValues = rows.map((row) => row.timeRel);
+      const corrX = pearsonCorrelation(rows, "final_sp_x", "future_error_x");
+      const corrY = pearsonCorrelation(rows, "final_sp_y", "future_error_y");
+
+      const traces = [
+        {
+          x: timeValues,
+          y: rows.map((row) => row.final_sp_x),
+          xaxis: "x",
+          yaxis: "y",
+          type: "scatter",
+          mode: "lines",
+          name: "final_sp_x [m/s]",
+          hovertemplate: "time=%{x:.2f}s<br>final_sp_x=%{y:.3f} m/s<extra></extra>"
+        },
+        {
+          x: timeValues,
+          y: rows.map((row) => row.future_error_x),
+          xaxis: "x",
+          yaxis: "y2",
+          type: "scatter",
+          mode: "lines",
+          name: "future_error_x [m]",
+          line: { dash: "dash" },
+          hovertemplate: "time=%{x:.2f}s<br>future_error_x=%{y:.3f} m<extra></extra>"
+        },
+        {
+          x: timeValues,
+          y: rows.map((row) => row.final_sp_y),
+          xaxis: "x2",
+          yaxis: "y3",
+          type: "scatter",
+          mode: "lines",
+          name: "final_sp_y [m/s]",
+          hovertemplate: "time=%{x:.2f}s<br>final_sp_y=%{y:.3f} m/s<extra></extra>"
+        },
+        {
+          x: timeValues,
+          y: rows.map((row) => row.future_error_y),
+          xaxis: "x2",
+          yaxis: "y4",
+          type: "scatter",
+          mode: "lines",
+          name: "future_error_y [m]",
+          line: { dash: "dash" },
+          hovertemplate: "time=%{x:.2f}s<br>future_error_y=%{y:.3f} m<extra></extra>"
+        },
+        {
+          x: rows.map((row) => row.future_error_x),
+          y: rows.map((row) => row.final_sp_x),
+          xaxis: "x3",
+          yaxis: "y5",
+          type: "scatter",
+          mode: "markers",
+          name: "phase X: final_sp_x vs future_error_x",
+          marker: {
+            size: 6,
+            color: timeValues,
+            colorscale: "Viridis",
+            showscale: true,
+            colorbar: { title: "Time [s]", len: 0.42, y: 0.22 }
+          },
+          text: timeValues.map((value) => `${value.toFixed(2)} s`),
+          hovertemplate: "future_error_x=%{x:.3f} m<br>final_sp_x=%{y:.3f} m/s<br>%{text}<extra></extra>"
+        },
+        {
+          x: rows.map((row) => row.future_error_y),
+          y: rows.map((row) => row.final_sp_y),
+          xaxis: "x4",
+          yaxis: "y6",
+          type: "scatter",
+          mode: "markers",
+          name: "phase Y: final_sp_y vs future_error_y",
+          marker: {
+            size: 6,
+            color: timeValues,
+            colorscale: "Turbo",
+            showscale: false
+          },
+          text: timeValues.map((value) => `${value.toFixed(2)} s`),
+          hovertemplate: "future_error_y=%{x:.3f} m<br>final_sp_y=%{y:.3f} m/s<br>%{text}<extra></extra>"
         }
       ];
 
-      Plotly.newPlot("controllerErrorMergedPlot", traces, {
-        xaxis: { title: "Time [s]" },
-        yaxis: { title: `${axis.toUpperCase()} value` },
-        legend: { orientation: "h", y: 1.1, x: 0 },
-        margin: { t: 50, l: 60, r: 20, b: 50 }
+      const xFutureErrorRange = getSymmetricRange(rows.flatMap((row) => [row.future_error_x, row.future_error_y]));
+      const spRange = getSymmetricRange(rows.flatMap((row) => [row.final_sp_x, row.final_sp_y]));
+
+      Plotly.newPlot("spFutureErrorPlot", traces, {
+        grid: { rows: 2, columns: 2, pattern: "independent" },
+        xaxis: { domain: [0.0, 0.46], anchor: "y", title: "Time [s]" },
+        yaxis: { domain: [0.58, 1.0], anchor: "x", title: "final_sp_x [m/s]" },
+        yaxis2: { overlaying: "y", side: "right", title: "future_error_x [m]", zeroline: true },
+
+        xaxis2: { domain: [0.54, 1.0], anchor: "y3", title: "Time [s]" },
+        yaxis3: { domain: [0.58, 1.0], anchor: "x2", title: "final_sp_y [m/s]" },
+        yaxis4: { overlaying: "y3", side: "right", title: "future_error_y [m]", zeroline: true },
+
+        xaxis3: { domain: [0.0, 0.46], anchor: "y5", title: "future_error_x [m]", range: xFutureErrorRange },
+        yaxis5: { domain: [0.0, 0.40], anchor: "x3", title: "final_sp_x [m/s]", range: spRange },
+
+        xaxis4: { domain: [0.54, 1.0], anchor: "y6", title: "future_error_y [m]", range: xFutureErrorRange },
+        yaxis6: { domain: [0.0, 0.40], anchor: "x4", title: "final_sp_y [m/s]", range: spRange },
+
+        legend: { orientation: "h", y: 1.16, x: 0 },
+        margin: { t: 95, l: 80, r: 80, b: 60 },
+        annotations: [
+          {
+            text: "X axis: final_sp_x and future_error_x over time",
+            x: 0.0,
+            y: 1.08,
+            xref: "paper",
+            yref: "paper",
+            showarrow: false,
+            xanchor: "left",
+            font: { size: 13, color: "#16324f" }
+          },
+          {
+            text: "Y axis: final_sp_y and future_error_y over time",
+            x: 0.54,
+            y: 1.08,
+            xref: "paper",
+            yref: "paper",
+            showarrow: false,
+            xanchor: "left",
+            font: { size: 13, color: "#16324f" }
+          },
+          {
+            text: `Phase X, corr=${formatNumber(corrX, 4)}`,
+            x: 0.0,
+            y: 0.45,
+            xref: "paper",
+            yref: "paper",
+            showarrow: false,
+            xanchor: "left",
+            font: { size: 13, color: "#16324f" }
+          },
+          {
+            text: `Phase Y, corr=${formatNumber(corrY, 4)}`,
+            x: 0.54,
+            y: 0.45,
+            xref: "paper",
+            yref: "paper",
+            showarrow: false,
+            xanchor: "left",
+            font: { size: 13, color: "#16324f" }
+          }
+        ],
+        shapes: [
+          makeZeroLine("x", "y"),
+          makeZeroLine("x2", "y3"),
+          makeVerticalZeroLine("x3", "y5", spRange),
+          makeHorizontalZeroLine("x3", "y5", xFutureErrorRange),
+          makeVerticalZeroLine("x4", "y6", spRange),
+          makeHorizontalZeroLine("x4", "y6", xFutureErrorRange)
+        ]
+      }, { responsive: true, displaylogo: false });
+    }
+
+    function formatNumber(value, digits = 3) {
+      const numericValue = Number(value);
+      return Number.isFinite(numericValue) ? numericValue.toFixed(digits) : "-";
+    }
+
+    function getSymmetricRange(values) {
+      const finiteValues = values.map(Number).filter(Number.isFinite);
+      const maxAbsValue = Math.max(...finiteValues.map((value) => Math.abs(value)), 1e-3);
+      return [-maxAbsValue * 1.08, maxAbsValue * 1.08];
+    }
+
+    function makeZeroLine(xref, yref) {
+      return {
+        type: "line",
+        xref,
+        yref,
+        x0: appState.filteredControllerRows[0]?.timeRel ?? 0,
+        x1: appState.filteredControllerRows[appState.filteredControllerRows.length - 1]?.timeRel ?? 0,
+        y0: 0,
+        y1: 0,
+        line: { dash: "dash", width: 1, color: "#94a3b8" }
+      };
+    }
+
+    function makeVerticalZeroLine(xref, yref, yRange) {
+      return {
+        type: "line",
+        xref,
+        yref,
+        x0: 0,
+        x1: 0,
+        y0: yRange[0],
+        y1: yRange[1],
+        line: { dash: "dash", width: 1, color: "#94a3b8" }
+      };
+    }
+
+    function makeHorizontalZeroLine(xref, yref, xRange) {
+      return {
+        type: "line",
+        xref,
+        yref,
+        x0: xRange[0],
+        x1: xRange[1],
+        y0: 0,
+        y1: 0,
+        line: { dash: "dash", width: 1, color: "#94a3b8" }
+      };
+    }
+
+    function renderPhasePlot() {
+      const rows = appState.filteredControllerRows;
+      const axis = axisFilter.value;
+      const times = rows.map((row) => row.timeRel);
+
+      Plotly.newPlot("phasePlot", [
+        {
+          x: rows.map((row) => row[`error_${axis}`]),
+          y: rows.map((row) => row[`final_sp_${axis}`]),
+          type: "scatter",
+          mode: "markers",
+          name: `final_sp_${axis} vs error_${axis}`,
+          marker: {
+            size: 7,
+            color: times,
+            colorscale: "Viridis",
+            showscale: true,
+            colorbar: { title: "Time [s]" }
+          },
+          text: times.map((value) => `${value.toFixed(2)} s`),
+          hovertemplate: `error_${axis}=%{x:.3f} m<br>final_sp_${axis}=%{y:.3f} m/s<br>%{text}<extra></extra>`
+        },
+        {
+          x: rows.map((row) => row[`error_${axis}`]),
+          y: rows.map((row) => row[`drone_vel_${axis}`]),
+          type: "scatter",
+          mode: "markers",
+          name: `drone_vel_${axis} vs error_${axis}`,
+          marker: {
+            size: 6,
+            symbol: "diamond-open",
+            color: times,
+            colorscale: "Turbo",
+            showscale: false
+          },
+          text: times.map((value) => `${value.toFixed(2)} s`),
+          hovertemplate: `error_${axis}=%{x:.3f} m<br>drone_vel_${axis}=%{y:.3f} m/s<br>%{text}<extra></extra>`
+        }
+      ], {
+        xaxis: { title: `error_${axis} [m]` },
+        yaxis: { title: `command / response ${axis.toUpperCase()} [m/s]` },
+        legend: { orientation: "h", y: 1.12, x: 0 },
+        margin: { t: 60, l: 70, r: 40, b: 60 },
+        shapes: [
+          {
+            type: "line",
+            x0: 0,
+            x1: 0,
+            y0: Math.min(...rows.map((row) => Math.min(Number(row[`final_sp_${axis}`]), Number(row[`drone_vel_${axis}`])))),
+            y1: Math.max(...rows.map((row) => Math.max(Number(row[`final_sp_${axis}`]), Number(row[`drone_vel_${axis}`])))),
+            line: { dash: "dash", width: 1, color: "#94a3b8" }
+          },
+          {
+            type: "line",
+            x0: Math.min(...rows.map((row) => Number(row[`error_${axis}`]))),
+            x1: Math.max(...rows.map((row) => Number(row[`error_${axis}`]))),
+            y0: 0,
+            y1: 0,
+            line: { dash: "dash", width: 1, color: "#94a3b8" }
+          }
+        ]
       }, { responsive: true, displaylogo: false });
     }
 
@@ -855,7 +1175,7 @@
 
     async function exportAllPlots() {
       const plotIds = [
-        "trajectoryPlot", "kalmanPlot", "velocityPlot", "controllerErrorMergedPlot", "altitudePlot",
+        "trajectoryPlot", "kalmanPlot", "velocityPlot", "errorResponsePlot", "controlComponentPlot", "spFutureErrorPlot", "phasePlot", "altitudePlot",
         "bottleneckPlot", "cumulativePlot"
       ];
       for (const plotId of plotIds) {
@@ -873,6 +1193,50 @@
           console.error(`Loi xuat PNG cho ${plotId}:`, error);
         }
       }
+    }
+
+    function getFiniteSeries(rows, columnName) {
+      return rows
+        .map((row) => Number(row[columnName]))
+        .filter((value) => Number.isFinite(value));
+    }
+
+    function meanAbs(values) {
+      if (!values || values.length === 0) return 0.0;
+      return values.reduce((sum, value) => sum + Math.abs(value), 0.0) / values.length;
+    }
+
+    function maxAbs(values) {
+      if (!values || values.length === 0) return 0.0;
+      return Math.max(...values.map((value) => Math.abs(value)));
+    }
+
+    function pearsonCorrelation(rows, keyA, keyB) {
+      const pairs = rows
+        .map((row) => [Number(row[keyA]), Number(row[keyB])])
+        .filter(([valueA, valueB]) => Number.isFinite(valueA) && Number.isFinite(valueB));
+
+      if (pairs.length < 2) return 0.0;
+
+      const valuesA = pairs.map((pair) => pair[0]);
+      const valuesB = pairs.map((pair) => pair[1]);
+      const meanA = mean(valuesA);
+      const meanB = mean(valuesB);
+      let numerator = 0.0;
+      let varianceA = 0.0;
+      let varianceB = 0.0;
+
+      for (const [valueA, valueB] of pairs) {
+        const deltaA = valueA - meanA;
+        const deltaB = valueB - meanB;
+        numerator += deltaA * deltaB;
+        varianceA += deltaA * deltaA;
+        varianceB += deltaB * deltaB;
+      }
+
+      const denominator = Math.sqrt(varianceA * varianceB);
+      if (denominator <= 1e-12) return 0.0;
+      return numerator / denominator;
     }
 
     function getValidSeries(rows, columnName) {
@@ -905,7 +1269,7 @@
 
     function resizeAllPlots() {
       [
-        "trajectoryPlot", "kalmanPlot", "velocityPlot", "controllerErrorMergedPlot", "altitudePlot",
+        "trajectoryPlot", "kalmanPlot", "velocityPlot", "errorResponsePlot", "controlComponentPlot", "spFutureErrorPlot", "phasePlot", "altitudePlot",
         "bottleneckPlot", "cumulativePlot"
       ].forEach((plotId) => {
         const element = document.getElementById(plotId);

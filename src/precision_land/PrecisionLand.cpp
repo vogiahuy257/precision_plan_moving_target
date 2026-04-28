@@ -15,6 +15,7 @@ namespace
 {
 const std::string kModeName = "PLHEOC";
 constexpr bool kEnableDebugOutput = true;
+constexpr float kVelocityDataTimeoutSec = 0.35f;
 
 void publishPrecisionLandTiming(
     const rclcpp::Publisher<std_msgs::msg::String>::SharedPtr &pub,
@@ -214,6 +215,12 @@ void PrecisionLand::loadParameters()
     _node.declare_parameter<float>("descent_max_velocity", 10.0f);
     _node.declare_parameter<float>("slew_acc", 10.0f);
 
+    _node.declare_parameter<bool>("dob.enabled", true);
+    _node.declare_parameter<float>("dob.tau_sec", 1.2f);
+    _node.declare_parameter<float>("dob.gain", 0.45f);
+    _node.declare_parameter<float>("dob.max_bias", 1.5f);
+    _node.declare_parameter<float>("dob.deadband", 0.12f);
+
     _node.declare_parameter<float>("land_zone_z", 0.5f);
     _node.declare_parameter<float>("descent_vel", 0.5f);
 
@@ -238,6 +245,12 @@ void PrecisionLand::loadParameters()
 
     _node.declare_parameter<bool>("debug_logger", true);
 
+    bool paramDobEnabled = true;
+    float paramDobTauSec = 1.2f;
+    float paramDobGain = 0.45f;
+    float paramDobMaxBias = 1.5f;
+    float paramDobDeadband = 0.12f;
+
     _node.get_parameter("topics.target_pose_raw", _targetPoseRawTopic);
     _node.get_parameter("topics.target_pose", _targetPoseTopic);
     _node.get_parameter("topics.target_velocity", _targetVelocityTopic);
@@ -254,6 +267,12 @@ void PrecisionLand::loadParameters()
     _node.get_parameter("descent_kd_pid", _paramDescentKd);
     _node.get_parameter("descent_max_velocity", _paramDescentMaxVelocity);
     _node.get_parameter("slew_acc", _paramSlewAcc);
+
+    _node.get_parameter("dob.enabled", paramDobEnabled);
+    _node.get_parameter("dob.tau_sec", paramDobTauSec);
+    _node.get_parameter("dob.gain", paramDobGain);
+    _node.get_parameter("dob.max_bias", paramDobMaxBias);
+    _node.get_parameter("dob.deadband", paramDobDeadband);
 
     _node.get_parameter("land_zone_z", _paramLandZoneZ);
     _node.get_parameter("descent_vel", _paramDescentVel);
@@ -279,6 +298,11 @@ void PrecisionLand::loadParameters()
 
     _node.get_parameter("debug_logger", _paramDebugLogger);
 
+    paramDobTauSec = std::max(paramDobTauSec, 1e-3f);
+    paramDobGain = std::max(paramDobGain, 0.0f);
+    paramDobMaxBias = std::max(paramDobMaxBias, 0.0f);
+    paramDobDeadband = std::max(paramDobDeadband, 0.0f);
+
     try
     {
         precision_land::XYControllerParams xyParams;
@@ -288,6 +312,11 @@ void PrecisionLand::loadParameters()
         xyParams.deadband = _paramPidDeadband;
         xyParams.maxVelocity = _paramDescentMaxVelocity;
         xyParams.slewAcc = _paramSlewAcc;
+        xyParams.dob.enabled = paramDobEnabled;
+        xyParams.dob.tauSec = paramDobTauSec;
+        xyParams.dob.gain = paramDobGain;
+        xyParams.dob.maxBias = paramDobMaxBias;
+        xyParams.dob.deadband = paramDobDeadband;
         _xyVelocityController.configure(xyParams);
 
         precision_land::ZControllerParams zParams;
@@ -739,8 +768,26 @@ void PrecisionLand::handleDescendState(float dt_s, bool targetLost)
         xyInput.futureErrorXY = predictionOutput.futureErrorXY;
         xyInput.dtSec = dt_s;
 
+        const Eigen::Vector3f vehicleVelocityNed = _vehicleLocalPosition->velocityNed();
+        xyInput.vehicleVelocityXY = Eigen::Vector2f(
+            vehicleVelocityNed.x(),
+            vehicleVelocityNed.y());
+        xyInput.targetValid = !targetLost || allowBlindFinalDescent;
+
+        const bool velocityTimestampValid = _targetWorld.velocityTimestamp.nanoseconds() != 0;
+        const float velocityAgeSec =
+            (_targetWorld.validVelocity && velocityTimestampValid)
+                ? static_cast<float>((ctrlStartNow - _targetWorld.velocityTimestamp).seconds())
+                : kVelocityDataTimeoutSec + 1.0f;
+
+        const bool velocityFresh =
+            _targetWorld.validVelocity &&
+            velocityTimestampValid &&
+            velocityAgeSec >= 0.0f &&
+            velocityAgeSec <= kVelocityDataTimeoutSec;
+
         const bool canUseTrackedVelocity =
-            _targetWorld.validVelocity && (!targetLost || allowBlindFinalDescent);
+            velocityFresh && (!targetLost || allowBlindFinalDescent);
 
         if (canUseTrackedVelocity)
         {
@@ -950,7 +997,19 @@ precision_land::PredictionInput PrecisionLand::buildPredictionInput(float dt_s, 
         static_cast<float>(_targetWorld.position.y()),
         static_cast<float>(_targetWorld.position.z()));
 
-    input.target.hasVelocity = _paramUsePredictiveError && _targetWorld.validVelocity;
+    const bool velocityTimestampValid = _targetWorld.velocityTimestamp.nanoseconds() != 0;
+    const float velocityAgeSec =
+        (_targetWorld.validVelocity && velocityTimestampValid)
+            ? static_cast<float>((ctrlStartNow - _targetWorld.velocityTimestamp).seconds())
+            : kVelocityDataTimeoutSec + 1.0f;
+
+    const bool velocityFresh =
+        _targetWorld.validVelocity &&
+        velocityTimestampValid &&
+        velocityAgeSec >= 0.0f &&
+        velocityAgeSec <= kVelocityDataTimeoutSec;
+
+    input.target.hasVelocity = _paramUsePredictiveError && velocityFresh;
     if (input.target.hasVelocity)
     {
         input.target.velocityWorld = Eigen::Vector3f(
