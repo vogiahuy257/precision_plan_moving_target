@@ -14,7 +14,7 @@ precision_land:
       vehicle_land_detected: "/fmu/out/vehicle_land_detected"
 
       # Local position của PX4, dùng lấy dist_bottom và z local
-      vehicle_local_position: "/fmu/out/vehicle_local_position"
+      vehicle_local_position: "/fmu/out/vehicle_local_position_v1"
 
       # Topic gửi lệnh chuỗi điều khiển gimbal
       gimbal_command: "/gimbal/cmd/sequence"
@@ -45,7 +45,7 @@ precision_land:
     descent_max_velocity: 10.0
 
     # Giới hạn tốc độ thay đổi vận tốc ngang để làm mượt lệnh điều khiển
-    slew_acc: 10.0
+    slew_acc: 0.9
 
     # =========================
     # Disturbance Observer
@@ -55,7 +55,7 @@ precision_land:
     # Output của DOB sẽ được cộng thêm vào velocity setpoint XY sau PID + feedforward.
     dob:
       # Bật/tắt Disturbance Observer
-      enabled: true
+      enabled: false
 
       # Hằng số thời gian lọc nhiễu.
       # Giá trị lớn hơn -> bù mượt hơn nhưng phản ứng chậm hơn.
@@ -90,10 +90,10 @@ precision_land:
     descent_gate_radius: 0.3
 
     # Vận tốc hạ nhỏ nhất khi đang ở trong gate
-    vmin: 0.6
+    vmin: 0.4
 
     # Vận tốc hạ lớn nhất khi target nằm gần tâm
-    vmax: 1.2
+    vmax: 0.6
 
     # =========================
     # Tham số prediction
@@ -129,7 +129,7 @@ precision_land:
       # Chọn nguồn độ cao cho logic disarm
       # "dist_bottom": dùng cảm biến khoảng cách xuống đất từ PX4
       # "local_position_z": dùng z của vehicle_local_position
-      altitude_source: "local_position_z"
+      altitude_source: "dist_bottom"
 
       # Chỉ cho phép disarm khi độ cao nhỏ hơn hoặc bằng ngưỡng này
       height: 0.007

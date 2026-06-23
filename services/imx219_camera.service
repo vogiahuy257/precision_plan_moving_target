@@ -1,0 +1,23 @@
+[Unit]
+Description=IMX219 camera
+After=multi-user.target
+
+[Service]
+Type=simple
+User=pihuy
+Group=pihuy
+WorkingDirectory=/home/pihuy/precision_plan_moving_target
+
+Environment=HOME=/home/pihuy
+Environment=ROS_DOMAIN_ID=0
+Environment=LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
+Environment=GST_PLUGIN_PATH=/usr/local/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/local/lib/gstreamer-1.0
+Environment=LIBCAMERA_IPA_MODULE_PATH=/usr/local/lib/aarch64-linux-gnu/libcamera/ipa:/usr/local/lib/libcamera/ipa
+
+ExecStart=/bin/bash /home/pihuy/precision_plan_moving_target/services/run_imx219.sh
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

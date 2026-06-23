@@ -13,6 +13,7 @@ namespace kalman_filter_data
 enum class MountMode
 {
     BellyFixedCamera,
+    BellyFixedCameraRight90,
     BellyGimbalCamera
 };
 

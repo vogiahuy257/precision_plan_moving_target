@@ -344,7 +344,8 @@ Eigen::Quaterniond FrameTransformer::bodyFromMountQuaternion() const
 {
     try
     {
-        if (config_.mountMode == MountMode::BellyFixedCamera)
+        if (config_.mountMode == MountMode::BellyFixedCamera ||
+            config_.mountMode == MountMode::BellyFixedCameraRight90)
         {
             return Eigen::Quaterniond::Identity();
         }
@@ -359,6 +360,50 @@ Eigen::Quaterniond FrameTransformer::bodyFromMountQuaternion() const
     catch (...)
     {
         throw std::runtime_error("FrameTransformer::bodyFromMountQuaternion failed: unknown exception");
+    }
+}
+
+/**
+ * Tao cau hinh cho camera gan bung co dinh nhung bi xoay phai 90 do.
+ *
+ * Input:
+ *     cameraOffsetBody: do lech vi tri camera trong he body cua UAV
+ *
+ * Logic:
+ *     - Dat mount mode la BellyFixedCameraRight90
+ *     - Camera van la fixed mount, khong dung gimbal
+ *     - Camera van nhin xuong bung UAV
+ *     - Anh/camera xoay phai 90 do so voi belly_fixed_camera mac dinh
+ *
+ * Output:
+ *     Tra ve TransformConfig cho belly_fixed_camera_right_90.
+ */
+TransformConfig FrameTransformer::makeBellyFixedCameraRight90Config(
+    const Eigen::Vector3d &cameraOffsetBody)
+{
+    try
+    {
+        TransformConfig config;
+        config.mountMode = MountMode::BellyFixedCameraRight90;
+        config.mountModeString = "belly_fixed_camera_right_90";
+        config.cameraOffsetBody = cameraOffsetBody;
+
+        config.opticalToMountRotation << -1.0, 0.0, 0.0,
+                                         0.0, -1.0, 0.0,
+                                         0.0, 0.0, 1.0;
+
+        return config;
+    }
+    catch (const std::exception &exception)
+    {
+        throw std::runtime_error(
+            std::string("FrameTransformer::makeBellyFixedCameraRight90Config failed: ") +
+            exception.what());
+    }
+    catch (...)
+    {
+        throw std::runtime_error(
+            "FrameTransformer::makeBellyFixedCameraRight90Config failed: unknown exception");
     }
 }
 
@@ -463,6 +508,11 @@ MountMode FrameTransformer::parseMountMode(const std::string &modeString)
     {
         const std::string lowered = toLowerCopy(modeString);
 
+        if (lowered == "belly_fixed_camera_right_90")
+        {
+            return MountMode::BellyFixedCameraRight90;
+        }
+
         if (lowered == "belly_fixed_camera")
         {
             return MountMode::BellyFixedCamera;
@@ -509,6 +559,8 @@ std::string FrameTransformer::mountModeToString(MountMode mountMode)
             return "belly_fixed_camera";
         case MountMode::BellyGimbalCamera:
             return "belly_gimbal_camera";
+        case MountMode::BellyFixedCameraRight90:
+            return "belly_fixed_camera_right_90";
         default:
             return "belly_fixed_camera";
         }

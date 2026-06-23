@@ -1,0 +1,16 @@
+imx219_camera_node:
+  ros__parameters:
+    width: 640
+    height: 480
+    fps: 30.0
+
+    frame_id: "camera_optical_frame"
+
+    image_topic: "/camera/image"
+    camera_info_topic: "/camera/camera_info"
+
+    camera_info_url: "file:///home/pihuy/precision_plan_moving_target/calibration/ost.yaml"
+
+    output_encoding: "mono8"
+
+    gst_pipeline: "libcamerasrc ! video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! videoconvert ! video/x-raw,format=BGR,width=640,height=480 ! appsink drop=true max-buffers=1 sync=false"

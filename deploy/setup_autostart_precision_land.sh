@@ -7,34 +7,26 @@ echo "[INFO] Setup Precision Landing Autostart Stack"
 echo "=============================================="
 
 USER_NAME="pihuy"
-BASE_DIR="/home/${USER_NAME}/Precision-Landing"
+BASE_DIR="/home/${USER_NAME}/precision_plan_moving_target"
 SERVICE_DIR="${BASE_DIR}/services"
 SYSTEMD_DIR="/etc/systemd/system"
 
 # === Service cũ cần dọn sạch ===
 LEGACY_SERVICES=(
-  # "precision-land-stack.service"
-  # "rtsp-relay-node-cam2.service"
-  # "uav-autostart.service"
   "microxrce-agent.service"
-  "rtsp-camera.service"
+  "imx219_camera.service"
   "aruco-tracker.service"
-  "target-pose-fusion.service"
-  "gimbal-controller.service"
+  "kalmanfilter.service"
   "precision-land.service"
   "eth0-force-10mbps.service"
-  # "taggpio_monitor.service"
 )
 
 SERVICES=(
   "microxrce-agent.service"
-  "rtsp-camera.service"
-  # "aruco-tracker.service"
-  # "target-pose-fusion.service"
-  "gimbal-controller.service"
-  # "precision-land.service"
-  "eth0-force-10mbps.service"
-  # "taggpio_monitor.service"
+  "imx219_camera.service"
+  "aruco-tracker.service"
+  "kalmanfilter.service"
+  "precision-land.service"
 )
 
 echo "[INFO] Checking service scripts permissions..."

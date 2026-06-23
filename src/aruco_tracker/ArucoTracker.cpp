@@ -73,12 +73,12 @@ ArucoTrackerNode::ArucoTrackerNode()
     get_parameter_or(
         "image_topic",
         image_topic,
-        std::string("/world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image"));
+        std::string("/camera/image"));
 
     get_parameter_or(
         "camera_info_topic",
         camera_info_topic,
-        std::string("/world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/camera_info"));
+        std::string("/camera/camera_info"));
 
     _image_sub = create_subscription<sensor_msgs::msg::Image>(
         image_topic,
@@ -103,9 +103,9 @@ ArucoTrackerNode::ArucoTrackerNode()
 
 void ArucoTrackerNode::loadParameters()
 {
-    declare_parameter<int>("aruco_id", 0);
-    declare_parameter<int>("dictionary", 2);
-    declare_parameter<double>("marker_size", 0.5);
+    declare_parameter<int>("aruco_id", 7);
+    declare_parameter<int>("dictionary", 4);
+    declare_parameter<double>("marker_size", 0.28);
 
     _param_aruco_id = get_parameter("aruco_id").as_int();
     _param_dictionary = get_parameter("dictionary").as_int();

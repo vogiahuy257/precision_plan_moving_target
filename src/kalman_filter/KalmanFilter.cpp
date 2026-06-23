@@ -280,21 +280,23 @@ void KalmanFilterNode::initFrameTransformer()
     {
         try
         {
-            data_.config.transform.mountMode =
-                frame_transform::FrameTransformer::parseMountMode(
-                    data_.config.transform.mountModeString);
+           switch (data_.config.transform.mountMode)
+            {
+                case kalman_filter_data::MountMode::BellyFixedCamera:
+                    data_.config.transform = frame_transform::FrameTransformer::makeBellyFixedCameraConfig(data_.config.transform.cameraOffsetBody);
+                    break;
 
-            if (data_.config.transform.mountMode == kalman_filter_data::MountMode::BellyFixedCamera)
-            {
-                data_.config.transform =
-                    frame_transform::FrameTransformer::makeBellyFixedCameraConfig(
-                        data_.config.transform.cameraOffsetBody);
-            }
-            else
-            {
-                data_.config.transform =
-                    frame_transform::FrameTransformer::makeBellyGimbalCameraConfig(
-                        data_.config.transform.cameraOffsetBody);
+                case kalman_filter_data::MountMode::BellyFixedCameraRight90:
+                    data_.config.transform = frame_transform::FrameTransformer::makeBellyFixedCameraRight90Config(data_.config.transform.cameraOffsetBody);
+                    break;
+
+                case kalman_filter_data::MountMode::BellyGimbalCamera:
+                    data_.config.transform = frame_transform::FrameTransformer::makeBellyGimbalCameraConfig(data_.config.transform.cameraOffsetBody);
+                    break;
+
+                default:
+                    data_.config.transform = frame_transform::FrameTransformer::makeBellyFixedCameraConfig(data_.config.transform.cameraOffsetBody);
+                    break;
             }
         }
         catch (const std::exception &exception)

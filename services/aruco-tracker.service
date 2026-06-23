@@ -1,13 +1,12 @@
 [Unit]
 Description=ArUco Tracker ROS2 Node
 After=microxrce-agent.service
-Wants=rtsp-camera.service
 
 [Service]
 Type=simple
 User=pihuy
-WorkingDirectory=/home/pihuy/Precision-Landing
-ExecStart=/bin/bash /home/pihuy/Precision-Landing/services/start_aruco_tracker.sh
+WorkingDirectory=/home/pihuy/precision_plan_moving_target
+ExecStart=/bin/bash /home/pihuy/precision_plan_moving_target/services/start_aruco_tracker.sh
 Restart=on-failure
 RestartSec=2
 KillSignal=SIGINT

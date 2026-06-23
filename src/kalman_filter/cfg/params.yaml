@@ -1,4 +1,4 @@
-kalman_filter:
+kalman_filter_node:
   ros__parameters:
     debug: false
     debug_csv_path: "kalman_logs/"
@@ -15,32 +15,21 @@ kalman_filter:
 
     frame_id: "map"
 
-    # =========================
-    # Process noise Q
-    # Gia toc bat dinh cua target
-    # Tang q_acc -> Kalman bam measurement nhanh hon nhung co the nhieu hon
-    # Giam q_acc -> output muot hon nhung de tre pha hon
-    # =========================
-    q_acc_x: 0.018
-    q_acc_y: 0.018
+    q_acc_x: 0.00018
+    q_acc_y: 0.00018
     q_acc_z: 0.00018
 
-    # =========================
-    # Measurement noise R co ban
-    # Day la phuong sai cua phep do position sau transform camera -> world
-    # Gia tri cang lon thi Kalman cang it tin camera
-    # =========================
-    r_pos_x: 0.008
-    r_pos_y: 0.008
+    r_pos_x: 0.0008
+    r_pos_y: 0.0008
     r_pos_z: 0.000012
 
-    dynamic_r.enable: true
+    dynamic_r.enable: false
     dynamic_r.near_range_m: 0.7
     dynamic_r.near_noise_gain: 0.08
     dynamic_r.max_extra_r_xy: 0.20
     dynamic_r.min_range_m: 0.1
 
-    transform.mount_mode: "belly_fixed_camera"
+    transform.mount_mode: "belly_fixed_camera_right_90"
     transform.camera_offset_x: 0.0
     transform.camera_offset_y: 0.0
-    transform.camera_offset_z: -0.1
+    transform.camera_offset_z: -0.12

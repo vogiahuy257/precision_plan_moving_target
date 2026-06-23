@@ -29,6 +29,7 @@ public:
     Eigen::Quaterniond bodyFromMountQuaternion() const;
 
     static TransformConfig makeBellyFixedCameraConfig(const Eigen::Vector3d &cameraOffsetBody);
+    static TransformConfig makeBellyFixedCameraRight90Config(const Eigen::Vector3d &cameraOffsetBody);
     static TransformConfig makeBellyGimbalCameraConfig(const Eigen::Vector3d &cameraOffsetBody);
     static MountMode parseMountMode(const std::string &modeString);
     static std::string mountModeToString(MountMode mountMode);
