@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.5)
 project(vins_estimator)
 
 set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_compile_options(-Wextra -Wpedantic)
 
 find_package(ament_cmake REQUIRED)
@@ -22,6 +23,7 @@ find_package(image_transport REQUIRED)
 find_package(OpenCV 4 REQUIRED)
 
 find_package(Ceres REQUIRED)
+find_package(Threads REQUIRED)
 
 include_directories(${CERES_INCLUDE_DIRS})
 
@@ -31,6 +33,7 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 find_package(Eigen3)
 include_directories(
   ${EIGEN3_INCLUDE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 add_executable(vins_estimator
@@ -53,7 +56,7 @@ add_executable(vins_estimator
 
 ament_target_dependencies(vins_estimator rclcpp rcpputils std_msgs sensor_msgs visualization_msgs geometry_msgs nav_msgs tf2 tf2_ros cv_bridge camera_model image_transport)
 
-target_link_libraries(vins_estimator ${OpenCV_LIBS} ${CERES_LIBRARIES}) 
+target_link_libraries(vins_estimator ${OpenCV_LIBS} ${CERES_LIBRARIES} Threads::Threads) 
 
 # Install nodes
 install(

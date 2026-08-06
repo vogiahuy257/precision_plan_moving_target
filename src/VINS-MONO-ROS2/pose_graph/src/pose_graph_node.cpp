@@ -7,7 +7,7 @@
 #include <sensor_msgs/image_encodings.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <std_msgs/msg/bool.hpp>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <iostream>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <mutex>

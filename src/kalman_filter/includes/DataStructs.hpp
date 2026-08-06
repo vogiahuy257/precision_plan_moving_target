@@ -13,7 +13,6 @@ namespace kalman_filter_data
 enum class MountMode
 {
     BellyFixedCamera,
-    BellyFixedCameraRight90,
     BellyGimbalCamera
 };
 
@@ -21,7 +20,6 @@ struct TopicConfig
 {
     std::string inputTargetPoseTopic{"/Aruco/target_pose_FRD"};
     std::string resetCommandTopic{"/Aruco/target_state"};
-    std::string targetValidTopic{"/target_valid"};
     std::string vehicleOdometryTopic{"/fmu/out/vehicle_odometry"};
     std::string vehicleLocalPositionTopic{"/fmu/out/vehicle_local_position"};
     std::string relativePositionRawTopic{"/KalmanFilter/target_pose_NED"};
@@ -75,7 +73,6 @@ struct RuntimeFlags
 {
     bool initialized{false};
     bool forceZero{false};
-    bool targetValid{false};
 
     bool vehicleOdomValid{false};
     bool vehicleLocalPosValid{false};

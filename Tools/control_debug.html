@@ -194,6 +194,9 @@
     .plot.comparePlot {
       min-height: 760px;
     }
+    .plot.multiAxisPlot {
+      min-height: 860px;
+    }
     .plot.large3d {
       min-height: 780px;
     }
@@ -256,13 +259,6 @@
             </select>
           </div>
 
-          <div class="controlGroup">
-            <label for="axisFilter">Trục 2D</label>
-            <select id="axisFilter">
-              <option value="x">X</option>
-              <option value="y">Y</option>
-            </select>
-          </div>
 
           <button id="renderBtn" class="primary">Vẽ lại</button>
           <button id="exportBtn" class="secondary">Xuất PNG</button>
@@ -296,19 +292,23 @@
             </div>
             <div class="card">
               <h3 class="cardTitle">Raw vs Filtered vs Predicted Kalman</h3>
-              <div id="kalmanPlot" class="plot"></div>
+              <div id="kalmanPlot" class="plot multiAxisPlot"></div>
+            </div>
+            <div class="card">
+              <h3 class="cardTitle">Kalman Z Tuning: Raw Z / Est Z / Pred Z / Residual</h3>
+              <div id="kalmanZPlot" class="plot"></div>
             </div>
             <div class="card">
               <h3 class="cardTitle">Target Velocity vs Final SP vs Drone Velocity</h3>
-              <div id="velocityPlot" class="plot"></div>
+              <div id="velocityPlot" class="plot multiAxisPlot"></div>
             </div>
             <div class="card">
               <h3 class="cardTitle">Tracking Error Response</h3>
-              <div id="errorResponsePlot" class="plot"></div>
+              <div id="errorResponsePlot" class="plot multiAxisPlot"></div>
             </div>
             <div class="card">
               <h3 class="cardTitle">Control Components / Saturation</h3>
-              <div id="controlComponentPlot" class="plot"></div>
+              <div id="controlComponentPlot" class="plot multiAxisPlot"></div>
             </div>
             <div class="card">
               <h3 class="cardTitle">Final SP XY vs Future Error XY</h3>
@@ -316,7 +316,7 @@
             </div>
             <div class="card">
               <h3 class="cardTitle">Error-Command Phase Plot</h3>
-              <div id="phasePlot" class="plot"></div>
+              <div id="phasePlot" class="plot comparePlot"></div>
             </div>
             <div class="card">
               <h3 class="cardTitle">Altitude / Dist Bottom / Final SP Z / Disarm / Land Detected</h3>
@@ -384,7 +384,6 @@
     const controllerDropzone = document.getElementById("controllerDropzone");
     const pipelineDropzone = document.getElementById("pipelineDropzone");
     const stateFilter = document.getElementById("stateFilter");
-    const axisFilter = document.getElementById("axisFilter");
     const renderBtn = document.getElementById("renderBtn");
     const exportBtn = document.getElementById("exportBtn");
     const resetBtn = document.getElementById("resetBtn");
@@ -401,7 +400,6 @@
     exportBtn.addEventListener("click", () => exportAllPlots());
     resetBtn.addEventListener("click", () => resetViewer());
     stateFilter.addEventListener("change", () => renderAllCharts());
-    axisFilter.addEventListener("change", () => renderAllCharts());
 
     document.querySelectorAll(".tabBtn").forEach((button) => {
       button.addEventListener("click", () => activateTab(button.dataset.tab));
@@ -453,7 +451,7 @@
 
     function clearPlots() {
       [
-        "trajectoryPlot", "kalmanPlot", "velocityPlot", "errorResponsePlot", "controlComponentPlot", "spFutureErrorPlot", "phasePlot", "altitudePlot",
+        "trajectoryPlot", "kalmanPlot", "kalmanZPlot", "velocityPlot", "errorResponsePlot", "controlComponentPlot", "spFutureErrorPlot", "phasePlot", "altitudePlot",
         "bottleneckPlot", "cumulativePlot"
       ].forEach((id) => Plotly.purge(id));
     }
@@ -608,9 +606,47 @@
       };
     }
 
+
+    function makeAxisLine(rows, yKey, name, xaxis, yaxis, dash = null) {
+      const trace = makeLineTrace(rows, "timeRel", yKey, name);
+      trace.xaxis = xaxis;
+      trace.yaxis = yaxis;
+      if (dash) trace.line = { dash };
+      return trace;
+    }
+
+    function makeArrayLine(rows, values, name, xaxis, yaxis, dash = null) {
+      const trace = {
+        x: rows.map((row) => row.timeRel),
+        y: values,
+        type: "scatter",
+        mode: "lines",
+        name,
+        xaxis,
+        yaxis
+      };
+      if (dash) trace.line = { dash };
+      return trace;
+    }
+
+    function multiAxisLayout(titleY1, titleY2, titleY3) {
+      return {
+        grid: { rows: 3, columns: 1, pattern: "independent" },
+        xaxis: { title: "Time [s]" },
+        yaxis: { title: titleY1 },
+        xaxis2: { title: "Time [s]" },
+        yaxis2: { title: titleY2 },
+        xaxis3: { title: "Time [s]" },
+        yaxis3: { title: titleY3 },
+        legend: { orientation: "h", y: 1.08, x: 0 },
+        margin: { t: 65, l: 75, r: 25, b: 55 }
+      };
+    }
+
     function renderControllerCharts() {
       renderTrajectoryPlot();
       renderKalmanPlot();
+      renderKalmanZPlot();
       renderErrorResponsePlot();
       renderControlComponentPlot();
       renderSpFutureErrorPlot();
@@ -677,105 +713,147 @@
 
     function renderKalmanPlot() {
       const rows = appState.filteredControllerRows;
-      const axis = axisFilter.value;
       Plotly.newPlot("kalmanPlot", [
-        makeLineTrace(rows, "timeRel", `target_raw_${axis}`, `target_raw_${axis}`),
-        makeLineTrace(rows, "timeRel", `target_est_${axis}`, `target_est_${axis}`),
-        makeLineTrace(rows, "timeRel", `target_pred_${axis}`, `target_pred_${axis}`)
+        makeAxisLine(rows, "target_raw_x", "raw_x", "x", "y"),
+        makeAxisLine(rows, "target_est_x", "est_x", "x", "y"),
+        makeAxisLine(rows, "target_pred_x", "pred_x", "x", "y", "dash"),
+        makeAxisLine(rows, "target_raw_y", "raw_y", "x2", "y2"),
+        makeAxisLine(rows, "target_est_y", "est_y", "x2", "y2"),
+        makeAxisLine(rows, "target_pred_y", "pred_y", "x2", "y2", "dash"),
+        makeAxisLine(rows, "target_raw_z", "raw_z", "x3", "y3"),
+        makeAxisLine(rows, "target_est_z", "est_z", "x3", "y3"),
+        makeAxisLine(rows, "target_pred_z", "pred_z", "x3", "y3", "dash")
+      ], multiAxisLayout("X [m]", "Y [m]", "Z [m]"), { responsive: true, displaylogo: false });
+    }
+
+    function renderKalmanZPlot() {
+      const rows = appState.filteredControllerRows;
+      if (!rows || rows.length === 0) return;
+
+      const residualRawEst = rows.map((row) => Number(row.target_raw_z) - Number(row.target_est_z));
+      const residualEstPred = rows.map((row) => Number(row.target_est_z) - Number(row.target_pred_z));
+      const finiteResidual = residualRawEst.filter(Number.isFinite);
+      const absResidual = finiteResidual.map((value) => Math.abs(value));
+
+      const residualStatsText = [
+        `mean_abs_raw_est=${formatNumber(meanAbs(finiteResidual), 4)} m`,
+        `rms_raw_est=${formatNumber(rms(finiteResidual), 4)} m`,
+        `std_raw_est=${formatNumber(stdDev(finiteResidual), 4)} m`,
+        `p95_abs_raw_est=${formatNumber(quantile(absResidual, 0.95), 4)} m`,
+        `max_abs_raw_est=${formatNumber(maxAbs(finiteResidual), 4)} m`
+      ].join(" | ");
+
+      Plotly.newPlot("kalmanZPlot", [
+        makeLineTrace(rows, "timeRel", "target_raw_z", "target_raw_z [raw]"),
+        makeLineTrace(rows, "timeRel", "target_est_z", "target_est_z [filtered]"),
+        makeLineTrace(rows, "timeRel", "target_pred_z", "target_pred_z [predicted]"),
+        {
+          x: rows.map((row) => row.timeRel),
+          y: residualRawEst,
+          type: "scatter",
+          mode: "lines",
+          name: "raw_z - est_z [residual]",
+          yaxis: "y2",
+          line: { dash: "dot" },
+          hovertemplate: "time=%{x:.2f}s<br>raw-est=%{y:.4f} m<extra></extra>"
+        },
+        {
+          x: rows.map((row) => row.timeRel),
+          y: residualEstPred,
+          type: "scatter",
+          mode: "lines",
+          name: "est_z - pred_z",
+          yaxis: "y2",
+          line: { dash: "dash" },
+          hovertemplate: "time=%{x:.2f}s<br>est-pred=%{y:.4f} m<extra></extra>"
+        }
       ], {
         xaxis: { title: "Time [s]" },
-        yaxis: { title: `${axis.toUpperCase()} [m]` },
-        margin: { t: 20 }
-      }, { responsive: true });
+        yaxis: { title: "Target Z in NED [m]" },
+        yaxis2: {
+          title: "Residual [m]",
+          overlaying: "y",
+          side: "right",
+          zeroline: true
+        },
+        legend: { orientation: "h", y: 1.18, x: 0 },
+        margin: { t: 85, l: 70, r: 80, b: 50 },
+        annotations: [{
+          text: residualStatsText,
+          x: 0,
+          y: 1.12,
+          xref: "paper",
+          yref: "paper",
+          showarrow: false,
+          xanchor: "left",
+          font: { size: 12, color: "#16324f" }
+        }],
+        shapes: [{
+          type: "line",
+          x0: rows[0]?.timeRel ?? 0,
+          x1: rows[rows.length - 1]?.timeRel ?? 0,
+          y0: 0,
+          y1: 0,
+          yref: "y2",
+          line: { dash: "dash", width: 1, color: "#94a3b8" }
+        }]
+      }, { responsive: true, displaylogo: false });
     }
 
     function renderVelocityPlot() {
       const rows = appState.filteredControllerRows;
-      const axis = axisFilter.value === "z" ? "x" : axisFilter.value;
       Plotly.newPlot("velocityPlot", [
-        makeLineTrace(rows, "timeRel", `target_vel_${axis}`, `target_vel_${axis}`),
-        makeLineTrace(rows, "timeRel", `final_sp_${axis}`, `final_sp_${axis}`),
-        makeLineTrace(rows, "timeRel", `drone_vel_${axis}`, `drone_vel_${axis}`)
-      ], {
-        xaxis: { title: "Time [s]" },
-        yaxis: { title: `Velocity ${axis.toUpperCase()} [m/s]` },
-        margin: { t: 20 }
-      }, { responsive: true });
+        makeAxisLine(rows, "target_vel_x", "target_vel_x", "x", "y"),
+        makeAxisLine(rows, "final_sp_x", "final_sp_x", "x", "y", "dash"),
+        makeAxisLine(rows, "drone_vel_x", "drone_vel_x", "x", "y", "dot"),
+        makeAxisLine(rows, "target_vel_y", "target_vel_y", "x2", "y2"),
+        makeAxisLine(rows, "final_sp_y", "final_sp_y", "x2", "y2", "dash"),
+        makeAxisLine(rows, "drone_vel_y", "drone_vel_y", "x2", "y2", "dot"),
+        makeAxisLine(rows, "target_vel_z", "target_vel_z", "x3", "y3"),
+        makeAxisLine(rows, "final_sp_z", "final_sp_z", "x3", "y3", "dash"),
+        makeAxisLine(rows, "drone_vel_z", "drone_vel_z", "x3", "y3", "dot")
+      ], multiAxisLayout("Velocity X [m/s]", "Velocity Y [m/s]", "Velocity Z [m/s]"), { responsive: true, displaylogo: false });
     }
 
     function renderErrorResponsePlot() {
       const rows = appState.filteredControllerRows;
-      const axis = axisFilter.value;
+      const zRawMinusEst = rows.map((row) => Number(row.target_raw_z) - Number(row.target_est_z));
+      const zEstMinusPred = rows.map((row) => Number(row.target_est_z) - Number(row.target_pred_z));
 
       Plotly.newPlot("errorResponsePlot", [
-        makeLineTrace(rows, "timeRel", `error_${axis}`, `error_${axis}`),
-        makeLineTrace(rows, "timeRel", `future_error_${axis}`, `future_error_${axis}`),
-        {
-          x: rows.map((row) => row.timeRel),
-          y: rows.map((row) => Math.abs(Number(row[`error_${axis}`]))),
-          type: "scatter",
-          mode: "lines",
-          name: `abs_error_${axis}`,
-          line: { dash: "dot" }
-        }
-      ], {
-        xaxis: { title: "Time [s]" },
-        yaxis: { title: `Tracking error ${axis.toUpperCase()} [m]` },
-        legend: { orientation: "h", y: 1.1, x: 0 },
-        margin: { t: 50, l: 70, r: 20, b: 50 },
-        shapes: [{
-          type: "line",
-          x0: rows[0]?.timeRel ?? 0,
-          x1: rows[rows.length - 1]?.timeRel ?? 0,
-          y0: 0,
-          y1: 0,
-          line: { dash: "dash", width: 1, color: "#94a3b8" }
-        }]
-      }, { responsive: true, displaylogo: false });
+        makeAxisLine(rows, "error_x", "error_x", "x", "y"),
+        makeAxisLine(rows, "future_error_x", "future_error_x", "x", "y", "dash"),
+        makeArrayLine(rows, rows.map((row) => Math.abs(Number(row.error_x))), "abs_error_x", "x", "y", "dot"),
+        makeAxisLine(rows, "error_y", "error_y", "x2", "y2"),
+        makeAxisLine(rows, "future_error_y", "future_error_y", "x2", "y2", "dash"),
+        makeArrayLine(rows, rows.map((row) => Math.abs(Number(row.error_y))), "abs_error_y", "x2", "y2", "dot"),
+        makeArrayLine(rows, zRawMinusEst, "raw_z - est_z", "x3", "y3"),
+        makeArrayLine(rows, zEstMinusPred, "est_z - pred_z", "x3", "y3", "dash")
+      ], multiAxisLayout("Tracking error X [m]", "Tracking error Y [m]", "Kalman Z residual [m]"), { responsive: true, displaylogo: false });
     }
 
     function renderControlComponentPlot() {
       const rows = appState.filteredControllerRows;
-      const axis = axisFilter.value;
-      const pidPlusFfRows = rows.map((row) => ({
-        timeRel: row.timeRel,
-        pid_plus_ff: Number(row[`pid_out_${axis}`]) + Number(row[`ff_${axis}`]),
-        final_sp: Number(row[`final_sp_${axis}`])
-      }));
+      const sumX = rows.map((row) => Number(row.pid_out_x) + Number(row.ff_x));
+      const sumY = rows.map((row) => Number(row.pid_out_y) + Number(row.ff_y));
+      const diffX = rows.map((row) => Number(row.final_sp_x) - Number(row.pid_out_x) - Number(row.ff_x));
+      const diffY = rows.map((row) => Number(row.final_sp_y) - Number(row.pid_out_y) - Number(row.ff_y));
 
       Plotly.newPlot("controlComponentPlot", [
-        makeLineTrace(rows, "timeRel", `pid_out_${axis}`, `pid_out_${axis}`),
-        makeLineTrace(rows, "timeRel", `ff_${axis}`, `ff_${axis}`),
-        {
-          x: pidPlusFfRows.map((row) => row.timeRel),
-          y: pidPlusFfRows.map((row) => row.pid_plus_ff),
-          type: "scatter",
-          mode: "lines",
-          name: `pid_plus_ff_${axis}`
-        },
-        makeLineTrace(rows, "timeRel", `final_sp_${axis}`, `final_sp_${axis}`),
-        {
-          x: pidPlusFfRows.map((row) => row.timeRel),
-          y: pidPlusFfRows.map((row) => row.final_sp - row.pid_plus_ff),
-          type: "scatter",
-          mode: "lines",
-          name: `final_sp_minus_pidff_${axis}`,
-          line: { dash: "dot" }
-        }
-      ], {
-        xaxis: { title: "Time [s]" },
-        yaxis: { title: `Control command ${axis.toUpperCase()} [m/s]` },
-        legend: { orientation: "h", y: 1.12, x: 0 },
-        margin: { t: 60, l: 70, r: 20, b: 50 },
-        shapes: [{
-          type: "line",
-          x0: rows[0]?.timeRel ?? 0,
-          x1: rows[rows.length - 1]?.timeRel ?? 0,
-          y0: 0,
-          y1: 0,
-          line: { dash: "dash", width: 1, color: "#94a3b8" }
-        }]
-      }, { responsive: true, displaylogo: false });
+        makeAxisLine(rows, "pid_out_x", "pid_out_x", "x", "y"),
+        makeAxisLine(rows, "ff_x", "ff_x", "x", "y"),
+        makeArrayLine(rows, sumX, "pid_plus_ff_x", "x", "y", "dash"),
+        makeAxisLine(rows, "final_sp_x", "final_sp_x", "x", "y", "dot"),
+        makeArrayLine(rows, diffX, "final_sp_minus_pidff_x", "x", "y", "longdash"),
+        makeAxisLine(rows, "pid_out_y", "pid_out_y", "x2", "y2"),
+        makeAxisLine(rows, "ff_y", "ff_y", "x2", "y2"),
+        makeArrayLine(rows, sumY, "pid_plus_ff_y", "x2", "y2", "dash"),
+        makeAxisLine(rows, "final_sp_y", "final_sp_y", "x2", "y2", "dot"),
+        makeArrayLine(rows, diffY, "final_sp_minus_pidff_y", "x2", "y2", "longdash"),
+        makeAxisLine(rows, "final_sp_z", "final_sp_z", "x3", "y3"),
+        makeAxisLine(rows, "altitude_abs", "altitude_abs", "x3", "y3", "dash"),
+        makeAxisLine(rows, "dist_bottom", "dist_bottom", "x3", "y3", "dot")
+      ], multiAxisLayout("Control X [m/s]", "Control Y [m/s]", "Z / Altitude [m or m/s]"), { responsive: true, displaylogo: false });
     }
 
     function renderSpFutureErrorPlot() {
@@ -992,65 +1070,65 @@
 
     function renderPhasePlot() {
       const rows = appState.filteredControllerRows;
-      const axis = axisFilter.value;
       const times = rows.map((row) => row.timeRel);
 
       Plotly.newPlot("phasePlot", [
         {
-          x: rows.map((row) => row[`error_${axis}`]),
-          y: rows.map((row) => row[`final_sp_${axis}`]),
+          x: rows.map((row) => row.error_x),
+          y: rows.map((row) => row.final_sp_x),
+          xaxis: "x",
+          yaxis: "y",
           type: "scatter",
           mode: "markers",
-          name: `final_sp_${axis} vs error_${axis}`,
-          marker: {
-            size: 7,
-            color: times,
-            colorscale: "Viridis",
-            showscale: true,
-            colorbar: { title: "Time [s]" }
-          },
+          name: "final_sp_x vs error_x",
+          marker: { size: 7, color: times, colorscale: "Viridis", showscale: true, colorbar: { title: "Time [s]" } },
           text: times.map((value) => `${value.toFixed(2)} s`),
-          hovertemplate: `error_${axis}=%{x:.3f} m<br>final_sp_${axis}=%{y:.3f} m/s<br>%{text}<extra></extra>`
+          hovertemplate: "error_x=%{x:.3f} m<br>final_sp_x=%{y:.3f} m/s<br>%{text}<extra></extra>"
         },
         {
-          x: rows.map((row) => row[`error_${axis}`]),
-          y: rows.map((row) => row[`drone_vel_${axis}`]),
+          x: rows.map((row) => row.error_x),
+          y: rows.map((row) => row.drone_vel_x),
+          xaxis: "x",
+          yaxis: "y",
           type: "scatter",
           mode: "markers",
-          name: `drone_vel_${axis} vs error_${axis}`,
-          marker: {
-            size: 6,
-            symbol: "diamond-open",
-            color: times,
-            colorscale: "Turbo",
-            showscale: false
-          },
+          name: "drone_vel_x vs error_x",
+          marker: { size: 6, symbol: "diamond-open", color: times, colorscale: "Turbo", showscale: false },
           text: times.map((value) => `${value.toFixed(2)} s`),
-          hovertemplate: `error_${axis}=%{x:.3f} m<br>drone_vel_${axis}=%{y:.3f} m/s<br>%{text}<extra></extra>`
+          hovertemplate: "error_x=%{x:.3f} m<br>drone_vel_x=%{y:.3f} m/s<br>%{text}<extra></extra>"
+        },
+        {
+          x: rows.map((row) => row.error_y),
+          y: rows.map((row) => row.final_sp_y),
+          xaxis: "x2",
+          yaxis: "y2",
+          type: "scatter",
+          mode: "markers",
+          name: "final_sp_y vs error_y",
+          marker: { size: 7, color: times, colorscale: "Viridis", showscale: false },
+          text: times.map((value) => `${value.toFixed(2)} s`),
+          hovertemplate: "error_y=%{x:.3f} m<br>final_sp_y=%{y:.3f} m/s<br>%{text}<extra></extra>"
+        },
+        {
+          x: rows.map((row) => row.error_y),
+          y: rows.map((row) => row.drone_vel_y),
+          xaxis: "x2",
+          yaxis: "y2",
+          type: "scatter",
+          mode: "markers",
+          name: "drone_vel_y vs error_y",
+          marker: { size: 6, symbol: "diamond-open", color: times, colorscale: "Turbo", showscale: false },
+          text: times.map((value) => `${value.toFixed(2)} s`),
+          hovertemplate: "error_y=%{x:.3f} m<br>drone_vel_y=%{y:.3f} m/s<br>%{text}<extra></extra>"
         }
       ], {
-        xaxis: { title: `error_${axis} [m]` },
-        yaxis: { title: `command / response ${axis.toUpperCase()} [m/s]` },
-        legend: { orientation: "h", y: 1.12, x: 0 },
-        margin: { t: 60, l: 70, r: 40, b: 60 },
-        shapes: [
-          {
-            type: "line",
-            x0: 0,
-            x1: 0,
-            y0: Math.min(...rows.map((row) => Math.min(Number(row[`final_sp_${axis}`]), Number(row[`drone_vel_${axis}`])))),
-            y1: Math.max(...rows.map((row) => Math.max(Number(row[`final_sp_${axis}`]), Number(row[`drone_vel_${axis}`])))),
-            line: { dash: "dash", width: 1, color: "#94a3b8" }
-          },
-          {
-            type: "line",
-            x0: Math.min(...rows.map((row) => Number(row[`error_${axis}`]))),
-            x1: Math.max(...rows.map((row) => Number(row[`error_${axis}`]))),
-            y0: 0,
-            y1: 0,
-            line: { dash: "dash", width: 1, color: "#94a3b8" }
-          }
-        ]
+        grid: { rows: 1, columns: 2, pattern: "independent" },
+        xaxis: { title: "error_x [m]" },
+        yaxis: { title: "X command / response [m/s]" },
+        xaxis2: { title: "error_y [m]" },
+        yaxis2: { title: "Y command / response [m/s]" },
+        legend: { orientation: "h", y: 1.15, x: 0 },
+        margin: { t: 80, l: 70, r: 50, b: 65 }
       }, { responsive: true, displaylogo: false });
     }
 
@@ -1175,7 +1253,7 @@
 
     async function exportAllPlots() {
       const plotIds = [
-        "trajectoryPlot", "kalmanPlot", "velocityPlot", "errorResponsePlot", "controlComponentPlot", "spFutureErrorPlot", "phasePlot", "altitudePlot",
+        "trajectoryPlot", "kalmanPlot", "kalmanZPlot", "velocityPlot", "errorResponsePlot", "controlComponentPlot", "spFutureErrorPlot", "phasePlot", "altitudePlot",
         "bottleneckPlot", "cumulativePlot"
       ];
       for (const plotId of plotIds) {
@@ -1204,6 +1282,21 @@
     function meanAbs(values) {
       if (!values || values.length === 0) return 0.0;
       return values.reduce((sum, value) => sum + Math.abs(value), 0.0) / values.length;
+    }
+
+    function rms(values) {
+      if (!values || values.length === 0) return 0.0;
+      return Math.sqrt(values.reduce((sum, value) => sum + value * value, 0.0) / values.length);
+    }
+
+    function stdDev(values) {
+      if (!values || values.length < 2) return 0.0;
+      const avg = mean(values);
+      const variance = values.reduce((sum, value) => {
+        const delta = value - avg;
+        return sum + delta * delta;
+      }, 0.0) / (values.length - 1);
+      return Math.sqrt(variance);
     }
 
     function maxAbs(values) {
@@ -1269,7 +1362,7 @@
 
     function resizeAllPlots() {
       [
-        "trajectoryPlot", "kalmanPlot", "velocityPlot", "errorResponsePlot", "controlComponentPlot", "spFutureErrorPlot", "phasePlot", "altitudePlot",
+        "trajectoryPlot", "kalmanPlot", "kalmanZPlot", "velocityPlot", "errorResponsePlot", "controlComponentPlot", "spFutureErrorPlot", "phasePlot", "altitudePlot",
         "bottleneckPlot", "cumulativePlot"
       ].forEach((plotId) => {
         const element = document.getElementById(plotId);

@@ -5,7 +5,7 @@
 #include <sensor_msgs/msg/point_cloud.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/bool.hpp>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 
 #include "feature_tracker.h"
 
@@ -234,7 +234,7 @@ int main(int argc, char **argv)
         }
     }
 
-    auto sub_img = n->create_subscription<sensor_msgs::msg::Image>(IMAGE_TOPIC, rclcpp::QoS(rclcpp::KeepLast(100)), img_callback);
+    auto sub_img = n->create_subscription<sensor_msgs::msg::Image>(IMAGE_TOPIC, rclcpp::SensorDataQoS(), img_callback);
 
     pub_img = n->create_publisher<sensor_msgs::msg::PointCloud>("feature", 1000);
     pub_match = n->create_publisher<sensor_msgs::msg::Image>("feature_img",1000);

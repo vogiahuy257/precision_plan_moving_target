@@ -6,6 +6,7 @@
 #include <eigen3/Eigen/Dense>
 #include <string>
 #include <ceres/ceres.h>
+#include <ceres/manifold.h>
 #include <ceres/rotation.h>
 #include <queue>
 #include <assert.h>
@@ -96,21 +97,53 @@ T NormalizeAngle(const T& angle_degrees) {
   	return angle_degrees;
 };
 
-class AngleLocalParameterization {
+class AngleLocalParameterization : public ceres::Manifold {
  public:
+  int AmbientSize() const override { return 1; }
+  int TangentSize() const override { return 1; }
 
-  template <typename T>
-  bool operator()(const T* theta_radians, const T* delta_theta_radians,
-                  T* theta_radians_plus_delta) const {
-    *theta_radians_plus_delta =
-        NormalizeAngle(*theta_radians + *delta_theta_radians);
-
+  bool Plus(const double* theta_degrees,
+            const double* delta_theta_degrees,
+            double* theta_degrees_plus_delta) const override {
+    theta_degrees_plus_delta[0] =
+        NormalizeAngle(theta_degrees[0] + delta_theta_degrees[0]);
     return true;
   }
 
-  static ceres::LocalParameterization* Create() {
-    return (new ceres::AutoDiffLocalParameterization<AngleLocalParameterization,
-                                                     1, 1>);
+  bool PlusJacobian(const double* theta_degrees,
+                    double* jacobian) const override {
+    (void)theta_degrees;
+    jacobian[0] = 1.0;
+    return true;
+  }
+
+  bool RightMultiplyByPlusJacobian(const double* theta_degrees,
+                                   const int num_rows,
+                                   const double* ambient_matrix,
+                                   double* tangent_matrix) const override {
+    (void)theta_degrees;
+    for (int r = 0; r < num_rows; ++r) {
+      tangent_matrix[r] = ambient_matrix[r];
+    }
+    return true;
+  }
+
+  bool Minus(const double* y_degrees,
+             const double* x_degrees,
+             double* y_minus_x) const override {
+    y_minus_x[0] = NormalizeAngle(y_degrees[0] - x_degrees[0]);
+    return true;
+  }
+
+  bool MinusJacobian(const double* theta_degrees,
+                     double* jacobian) const override {
+    (void)theta_degrees;
+    jacobian[0] = 1.0;
+    return true;
+  }
+
+  static ceres::Manifold* Create() {
+    return new AngleLocalParameterization();
   }
 };
 

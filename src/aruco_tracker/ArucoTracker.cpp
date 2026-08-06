@@ -1,7 +1,9 @@
+
 #include "ArucoTracker.hpp"
+
+#include <cmath>
 #include <iomanip>
 #include <sstream>
-#include <px4_msgs/msg/vehicle_odometry.hpp>
 #include <std_msgs/msg/string.hpp>
 
 constexpr double MARKER_TIMEOUT_SEC = 5.0;
@@ -55,7 +57,6 @@ void publishArucoTiming(
 ArucoTrackerNode::ArucoTrackerNode()
     : Node("aruco_tracker_node")
 {
-    // Setup QoS for real camera compatibility (Best Effort/Volatile)
     auto qos = rclcpp::SensorDataQoS();
 
     loadParameters();
@@ -67,7 +68,6 @@ ArucoTrackerNode::ArucoTrackerNode()
     auto dictionary = cv::aruco::getPredefinedDictionary(_param_dictionary);
     _detector = std::make_unique<cv::aruco::ArucoDetector>(dictionary, detectorParams);
 
-    // Subscribers
     std::string image_topic, camera_info_topic;
 
     get_parameter_or(
@@ -90,12 +90,10 @@ ArucoTrackerNode::ArucoTrackerNode()
         qos,
         std::bind(&ArucoTrackerNode::camera_info_callback, this, std::placeholders::_1));
 
-    // Publishers
     _image_pub = create_publisher<sensor_msgs::msg::Image>("/Aruco/image_proc", qos);
     _target_pose_pub = create_publisher<geometry_msgs::msg::PoseStamped>("/Aruco/target_pose_FRD", qos);
     _kalman_reset_pub = create_publisher<std_msgs::msg::String>("/Aruco/target_state", qos);
 
-    // Debug timing publisher
     _debug_dt_pub = create_publisher<std_msgs::msg::String>(
         "/debug_dt/aruco",
         rclcpp::QoS(10).best_effort());
@@ -103,9 +101,12 @@ ArucoTrackerNode::ArucoTrackerNode()
 
 void ArucoTrackerNode::loadParameters()
 {
-    declare_parameter<int>("aruco_id", 7);
-    declare_parameter<int>("dictionary", 4);
-    declare_parameter<double>("marker_size", 0.28);
+    // declare_parameter<int>("aruco_id", 7);
+    // declare_parameter<int>("dictionary", 4);
+    // declare_parameter<double>("marker_size", 0.28);
+    declare_parameter<int>("aruco_id", 10);
+    declare_parameter<int>("dictionary", 5);
+    declare_parameter<double>("marker_size", 0.08);
 
     _param_aruco_id = get_parameter("aruco_id").as_int();
     _param_dictionary = get_parameter("dictionary").as_int();
@@ -114,7 +115,8 @@ void ArucoTrackerNode::loadParameters()
 
 void ArucoTrackerNode::updateMarkerGeometry()
 {
-    float half_size = _param_marker_size / 2.0f;
+    const float half_size = static_cast<float>(_param_marker_size / 2.0);
+
     _object_points = {
         cv::Point3f(-half_size,  half_size, 0.0f),
         cv::Point3f( half_size,  half_size, 0.0f),
@@ -130,7 +132,6 @@ void ArucoTrackerNode::camera_info_callback(const sensor_msgs::msg::CameraInfo::
 
     if (_camera_matrix.at<double>(0, 0) != 0.0)
     {
-        RCLCPP_INFO(get_logger(), "Camera intrinsics received. Unsubscribing.");
         _camera_info_sub.reset();
     }
 }
@@ -139,147 +140,228 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
 {
     if (_camera_matrix.empty() || _dist_coeffs.empty())
     {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "Waiting for camera calibration...");
         return;
     }
 
+    const rclcpp::Time rxNow = now();
+    const rclcpp::Time procStart = now();
+
+    cv_bridge::CvImageConstPtr cv_ptr;
+
     try
     {
-        const rclcpp::Time rxNow = now();
-        const rclcpp::Time procStart = now();
+        cv_ptr = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::MONO8);
+    }
+    catch (const cv_bridge::Exception &)
+    {
+        return;
+    }
 
-        cv_bridge::CvImagePtr cv_ptr =
-            cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    const cv::Mat &gray = cv_ptr->image;
 
-        std::vector<int> ids;
-        std::vector<std::vector<cv::Point2f>> corners;
-        _detector->detectMarkers(cv_ptr->image, corners, ids);
+    if (gray.empty())
+    {
+        return;
+    }
 
-        if (!ids.empty())
+    std::vector<int> ids;
+    std::vector<std::vector<cv::Point2f>> corners;
+
+    _detector->detectMarkers(gray, corners, ids);
+
+    bool found = false;
+    int target_index = -1;
+
+    for (size_t i = 0; i < ids.size(); ++i)
+    {
+        if (ids[i] == _param_aruco_id)
         {
-            cv::aruco::drawDetectedMarkers(cv_ptr->image, corners, ids);
-        }
-
-        const rclcpp::Time imageStamp = msg->header.stamp;
-        const double imageStampSec = imageStamp.seconds();
-        bool found = false;
-
-        for (size_t i = 0; i < ids.size(); ++i)
-        {
-            if (ids[i] != _param_aruco_id)
-            {
-                continue;
-            }
-
             found = true;
-
-            cv::Vec3d rvec, tvec;
-            cv::solvePnP(_object_points, corners[i], _camera_matrix, _dist_coeffs, rvec, tvec);
-            cv::drawFrameAxes(cv_ptr->image, _camera_matrix, _dist_coeffs, rvec, tvec, _param_marker_size);
-
-            geometry_msgs::msg::PoseStamped pose_msg;
-            pose_msg.header.stamp = msg->header.stamp;
-            pose_msg.header.frame_id = msg->header.frame_id;
-
-            Eigen::Vector3d p_cam(tvec[0], tvec[1], tvec[2]);
-            pose_msg.pose.position.x = p_cam.x();
-            pose_msg.pose.position.y = p_cam.y();
-            pose_msg.pose.position.z = p_cam.z();
-
-            cv::Mat rot_mat;
-            cv::Rodrigues(rvec, rot_mat);
-            cv::Quatd q_marker_cv = cv::Quatd::createFromRotMat(rot_mat).normalize();
-
-            Eigen::Quaterniond q_marker(
-                q_marker_cv.w,
-                q_marker_cv.x,
-                q_marker_cv.y,
-                q_marker_cv.z);
-
-            q_marker.normalize();
-
-            pose_msg.pose.orientation.x = q_marker.x();
-            pose_msg.pose.orientation.y = q_marker.y();
-            pose_msg.pose.orientation.z = q_marker.z();
-            pose_msg.pose.orientation.w = q_marker.w();
-
-            annotate_image(cv_ptr, tvec);
-
-            const rclcpp::Time procEnd = now();
-            const rclcpp::Time pubNow = now();
-
-            publishArucoTiming(
-                _debug_dt_pub,
-                imageStampSec,
-                rxNow.seconds(),
-                procStart.seconds(),
-                procEnd.seconds(),
-                pubNow.seconds(),
-                true);
-
-            _target_pose_pub->publish(pose_msg);
-
-            _has_valid_pose = true;
-            _last_seen_time = pubNow;
+            target_index = static_cast<int>(i);
             break;
         }
+    }
 
-        if (!found)
-        {
-            const rclcpp::Time procEnd = now();
-            const rclcpp::Time pubNow = procEnd;
+    const rclcpp::Time imageStamp = msg->header.stamp;
+    const double imageStampSec = imageStamp.seconds();
 
-            publishArucoTiming(
-                _debug_dt_pub,
-                imageStampSec,
-                rxNow.seconds(),
-                procStart.seconds(),
-                procEnd.seconds(),
-                pubNow.seconds(),
-                false);
-        }
+    if (found && target_index >= 0)
+    {
+        cv::Vec3d rvec, tvec;
 
-        if (_has_valid_pose && !found)
-        {
-            const rclcpp::Time currentTime = now();
-            const double dt = (currentTime - _last_seen_time).seconds();
+        cv::solvePnP(
+            _object_points,
+            corners[target_index],
+            _camera_matrix,
+            _dist_coeffs,
+            rvec,
+            tvec);
 
-            if (dt > MARKER_TIMEOUT_SEC)
-            {
-                std_msgs::msg::String state_msg;
-                state_msg.data = "RESET";
-                _kalman_reset_pub->publish(state_msg);
-                _has_valid_pose = false;
-            }
-        }
-        else if (found)
+        geometry_msgs::msg::PoseStamped pose_msg;
+        pose_msg.header.stamp = msg->header.stamp;
+        pose_msg.header.frame_id = msg->header.frame_id;
+
+        Eigen::Vector3d p_cam(tvec[0], tvec[1], tvec[2]);
+        pose_msg.pose.position.x = p_cam.x();
+        pose_msg.pose.position.y = p_cam.y();
+        pose_msg.pose.position.z = p_cam.z();
+
+        cv::Mat rot_mat;
+        cv::Rodrigues(rvec, rot_mat);
+
+        cv::Quatd q_marker_cv =
+            cv::Quatd::createFromRotMat(rot_mat).normalize();
+
+        Eigen::Quaterniond q_marker(
+            q_marker_cv.w,
+            q_marker_cv.x,
+            q_marker_cv.y,
+            q_marker_cv.z);
+
+        q_marker.normalize();
+
+        pose_msg.pose.orientation.x = q_marker.x();
+        pose_msg.pose.orientation.y = q_marker.y();
+        pose_msg.pose.orientation.z = q_marker.z();
+        pose_msg.pose.orientation.w = q_marker.w();
+
+        _target_pose_pub->publish(pose_msg);
+
+        _has_valid_pose = true;
+        _last_seen_time = now();
+
+        std_msgs::msg::String state_msg;
+        state_msg.data = "ACTIVE";
+        _kalman_reset_pub->publish(state_msg);
+    }
+
+    if (_has_valid_pose && !found)
+    {
+        const rclcpp::Time currentTime = now();
+        const double dt = (currentTime - _last_seen_time).seconds();
+
+        if (dt > MARKER_TIMEOUT_SEC)
         {
             std_msgs::msg::String state_msg;
-            state_msg.data = "ACTIVE";
+            state_msg.data = "RESET";
             _kalman_reset_pub->publish(state_msg);
+
+            _has_valid_pose = false;
+        }
+    }
+
+    const rclcpp::Time procEnd = now();
+
+    if (_image_pub && _image_pub->get_subscription_count() > 0)
+    {
+        cv::Mat debug_image = gray.clone();
+
+        if (found && target_index >= 0)
+        {
+            const auto &target_corners = corners[target_index];
+
+            std::vector<cv::Point> contour;
+            contour.reserve(4);
+
+            cv::Point2f center(0.0f, 0.0f);
+
+            for (const auto &p : target_corners)
+            {
+                contour.emplace_back(
+                    static_cast<int>(std::round(p.x)),
+                    static_cast<int>(std::round(p.y)));
+
+                center += p;
+            }
+
+            center *= 0.25f;
+
+            const int cx = static_cast<int>(std::round(center.x));
+            const int cy = static_cast<int>(std::round(center.y));
+
+            cv::polylines(
+                debug_image,
+                contour,
+                true,
+                cv::Scalar(255),
+                2,
+                cv::LINE_AA);
+
+            cv::circle(
+                debug_image,
+                cv::Point(cx, cy),
+                4,
+                cv::Scalar(255),
+                -1,
+                cv::LINE_AA);
+
+            std::ostringstream label;
+            label << "ID:" << ids[target_index]
+                  << " x:" << cx
+                  << " y:" << cy;
+
+            const std::string text = label.str();
+
+            int baseline = 0;
+            const double font_scale = 0.55;
+            const int thickness = 1;
+
+            const cv::Size text_size = cv::getTextSize(
+                text,
+                cv::FONT_HERSHEY_SIMPLEX,
+                font_scale,
+                thickness,
+                &baseline);
+
+            int tx = cx + 8;
+            int ty = cy - 8;
+
+            if (tx + text_size.width + 4 >= debug_image.cols)
+            {
+                tx = cx - text_size.width - 8;
+            }
+
+            if (ty - text_size.height - 4 < 0)
+            {
+                ty = cy + text_size.height + 12;
+            }
+
+            cv::rectangle(
+                debug_image,
+                cv::Point(tx - 2, ty - text_size.height - 2),
+                cv::Point(tx + text_size.width + 2, ty + baseline + 2),
+                cv::Scalar(0),
+                -1);
+
+            cv::putText(
+                debug_image,
+                text,
+                cv::Point(tx, ty),
+                cv::FONT_HERSHEY_SIMPLEX,
+                font_scale,
+                cv::Scalar(255),
+                thickness,
+                cv::LINE_AA);
         }
 
-        _image_pub->publish(*cv_ptr->toImageMsg());
-    }
-    catch (const cv_bridge::Exception &e)
-    {
-        RCLCPP_ERROR(get_logger(), "CV Bridge error: %s", e.what());
-    }
-}
+        cv_bridge::CvImage debug_msg;
+        debug_msg.header = msg->header;
+        debug_msg.encoding = sensor_msgs::image_encodings::MONO8;
+        debug_msg.image = debug_image;
 
-void ArucoTrackerNode::annotate_image(cv_bridge::CvImagePtr image, const cv::Vec3d &target)
-{
-    std::ostringstream stream;
-    stream << std::fixed << std::setprecision(2) << "XYZ: " << target;
+        _image_pub->publish(*debug_msg.toImageMsg());
+    }
 
-    cv::putText(
-        image->image,
-        stream.str(),
-        cv::Point(10, 30),
-        cv::FONT_HERSHEY_SIMPLEX,
-        0.8,
-        cv::Scalar(0, 255, 255),
-        2);
+    const rclcpp::Time pubNow = now();
+
+    publishArucoTiming(
+        _debug_dt_pub,
+        imageStampSec,
+        rxNow.seconds(),
+        procStart.seconds(),
+        procEnd.seconds(),
+        pubNow.seconds(),
+        found);
 }
 
 int main(int argc, char **argv)
@@ -287,5 +369,6 @@ int main(int argc, char **argv)
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<ArucoTrackerNode>());
     rclcpp::shutdown();
+
     return 0;
 }

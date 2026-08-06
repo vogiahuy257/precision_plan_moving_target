@@ -74,11 +74,6 @@ KalmanFilterNode::KalmanFilterNode()
             subQos,
             std::bind(&KalmanFilterNode::resetCallback, this, std::placeholders::_1));
 
-        validSub_ = create_subscription<std_msgs::msg::Bool>(
-            data_.config.topics.targetValidTopic,
-            subQos,
-            std::bind(&KalmanFilterNode::validCallback, this, std::placeholders::_1));
-
         vehicleOdomSub_ = create_subscription<px4_msgs::msg::VehicleOdometry>(
             data_.config.topics.vehicleOdometryTopic,
             subQos,
@@ -155,9 +150,8 @@ void KalmanFilterNode::declareParameters()
     {
         declare_parameter<std::string>("topics.input_target_pose", "/Aruco/target_pose_FRD");
         declare_parameter<std::string>("topics.reset_command", "/Aruco/target_state");
-        declare_parameter<std::string>("topics.target_valid", "/target_valid");
         declare_parameter<std::string>("topics.vehicle_odometry", "/fmu/out/vehicle_odometry");
-        declare_parameter<std::string>("topics.vehicle_local_position", "/fmu/out/vehicle_local_position");
+        declare_parameter<std::string>("topics.vehicle_local_position", "/fmu/out/vehicle_local_position_v1");
         declare_parameter<std::string>("topics.relative_position_raw", "/KalmanFilter/target_pose_NED");
         declare_parameter<std::string>("topics.relative_position_predicted", "/KalmanFilter/target_pose_est_NED");
         declare_parameter<std::string>("topics.relative_velocity", "/KalmanFilter/target_velocity_est_NED");
@@ -217,7 +211,6 @@ void KalmanFilterNode::loadParameters()
     {
         get_parameter("topics.input_target_pose", data_.config.topics.inputTargetPoseTopic);
         get_parameter("topics.reset_command", data_.config.topics.resetCommandTopic);
-        get_parameter("topics.target_valid", data_.config.topics.targetValidTopic);
         get_parameter("topics.vehicle_odometry", data_.config.topics.vehicleOdometryTopic);
         get_parameter("topics.vehicle_local_position", data_.config.topics.vehicleLocalPositionTopic);
         get_parameter("topics.relative_position_raw", data_.config.topics.relativePositionRawTopic);
@@ -280,23 +273,21 @@ void KalmanFilterNode::initFrameTransformer()
     {
         try
         {
-           switch (data_.config.transform.mountMode)
+            data_.config.transform.mountMode =
+                frame_transform::FrameTransformer::parseMountMode(
+                    data_.config.transform.mountModeString);
+
+            if (data_.config.transform.mountMode == kalman_filter_data::MountMode::BellyFixedCamera)
             {
-                case kalman_filter_data::MountMode::BellyFixedCamera:
-                    data_.config.transform = frame_transform::FrameTransformer::makeBellyFixedCameraConfig(data_.config.transform.cameraOffsetBody);
-                    break;
-
-                case kalman_filter_data::MountMode::BellyFixedCameraRight90:
-                    data_.config.transform = frame_transform::FrameTransformer::makeBellyFixedCameraRight90Config(data_.config.transform.cameraOffsetBody);
-                    break;
-
-                case kalman_filter_data::MountMode::BellyGimbalCamera:
-                    data_.config.transform = frame_transform::FrameTransformer::makeBellyGimbalCameraConfig(data_.config.transform.cameraOffsetBody);
-                    break;
-
-                default:
-                    data_.config.transform = frame_transform::FrameTransformer::makeBellyFixedCameraConfig(data_.config.transform.cameraOffsetBody);
-                    break;
+                data_.config.transform =
+                    frame_transform::FrameTransformer::makeBellyFixedCameraConfig(
+                        data_.config.transform.cameraOffsetBody);
+            }
+            else
+            {
+                data_.config.transform =
+                    frame_transform::FrameTransformer::makeBellyGimbalCameraConfig(
+                        data_.config.transform.cameraOffsetBody);
             }
         }
         catch (const std::exception &exception)
@@ -415,8 +406,6 @@ void KalmanFilterNode::resetState()
         data_.timing.lastPredictTime = rclcpp::Time(0, 0, get_clock()->get_clock_type());
         data_.timing.lastMeasurementTime = rclcpp::Time(0, 0, get_clock()->get_clock_type());
         data_.kalman.predictDt = 0.0;
-
-        data_.runtime.targetValid = false;
     }
     catch (const std::exception &exception)
     {
@@ -636,52 +625,6 @@ void KalmanFilterNode::resetCallback(const std_msgs::msg::String::SharedPtr msg)
     catch (...)
     {
         KF_ERROR(get_logger(), "resetCallback failed: unknown exception");
-    }
-}
-
-/**
- * Callback nhan target_valid.
- *
- * Input:
- *     msg: std_msgs::msg::Bool::SharedPtr
- *
- * Logic:
- *     Neu target khong hop le thi bat che do hold.
- *     Neu target hop le tro lai thi tat forceZero.
- *
- * Output:
- *     data_.runtime duoc cap nhat.
- */
-void KalmanFilterNode::validCallback(const std_msgs::msg::Bool::SharedPtr msg)
-{
-    try
-    {
-        if (msg == nullptr)
-        {
-            KF_WARN(get_logger(), "validCallback received null msg");
-            return;
-        }
-
-        data_.runtime.targetValid = msg->data;
-        data_.runtime.forceZero = !msg->data;
-
-        if (!msg->data)
-        {
-            setForceZeroReason("Kalman paused: target_valid=false");
-
-            const rclcpp::Time nowTimestamp = now();
-            reportProcessingBlockState(ProcessingBlockState::ForceZeroHold);
-            publishZero(nowTimestamp);
-            debugLogger_.log(data_, nowTimestamp);
-        }
-    }
-    catch (const std::exception &exception)
-    {
-        KF_ERROR(get_logger(), "validCallback failed: %s", exception.what());
-    }
-    catch (...)
-    {
-        KF_ERROR(get_logger(), "validCallback failed: unknown exception");
     }
 }
 
@@ -1155,12 +1098,11 @@ void KalmanFilterNode::logStateSummary(const std::string &prefix)
 
         KF_WARN(
             get_logger(),
-            "%s | init=%d forceZero=%d targetValid=%d measValid=%d odomValid=%d localPosValid=%d "
+            "%s | init=%d forceZero=%d measValid=%d odomValid=%d localPosValid=%d "
             "predictDt=%.4f predictCount=%lu measurementAge=%.3f",
             prefix.c_str(),
             static_cast<int>(data_.runtime.initialized),
             static_cast<int>(data_.runtime.forceZero),
-            static_cast<int>(data_.runtime.targetValid),
             static_cast<int>(data_.targetMeasurement.valid),
             static_cast<int>(data_.runtime.vehicleOdomValid),
             static_cast<int>(data_.runtime.vehicleLocalPosValid),

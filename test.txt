@@ -6,12 +6,13 @@ ros2 run camera_calibration cameracalibrator --size 6x8 --square 0.025 --fisheye
 
 
 
-sudo systemctl restart aruco-tracker.service
 journalctl -u aruco-tracker.service -f
 journalctl -u kalmanfilter.service -f
 journalctl -u precision-land.service -f
+journalctl -u imx219_camera.service -f
 
-
+sudo systemctl restart aruco-tracker.service
+sudo systemctl restart imx219_camera.service
 sudo systemctl restart kalmanfilter.service
 sudo systemctl restart precision-land.service
 
@@ -31,17 +32,17 @@ sudo apt install -y \
   libsuitesparse-dev \
   libatlas-base-dev \
   libboost-all-dev \
-  ros-humble-cv-bridge \
-  ros-humble-image-transport \
-  ros-humble-tf2 \
-  ros-humble-tf2-ros \
-  ros-humble-rviz2 \
-  ros-humble-rqt-image-view
+  ros-jazzy-cv-bridge \
+  ros-jazzy-image-transport \
+  ros-jazzy-tf2 \
+  ros-jazzy-tf2-ros \
+  ros-jazzy-rviz2 \
+  ros-jazzy-rqt-image-view
 
 --- build tung goi 1 ----
 cd ~/VINS
 rm -rf build install log
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 
 colcon build --symlink-install --packages-select camera_model config_pkg
 colcon build --symlink-install --packages-select feature_tracker
@@ -55,8 +56,12 @@ MicroXRCEAgent udp4 -p 8888
 
 make px4_sitl gz_x500_mono_cam_down_forest
 
-source /opt/ros/humble/setup.bash
-source ~/VINS/install/setup.bash
+cp /home/pihuy/precision_plan_moving_target/src/VINS-MONO-ROS2/config_pkg/config/px4/px4_config.yaml \
+   /home/pihuy/precision_plan_moving_target/install/config_pkg/share/config_pkg/config/px4/px4_config.yaml
+
+source /opt/ros/jazzy/setup.bash
+source ~/precision_plan_moving_target/install/setup.bash
+ros2 launch vins_estimator px4.launch.py
 
 ros2 run px4_imu_bridge px4_imu_bridge_node --ros-args \
   -p input_topic:=/fmu/out/sensor_combined \
@@ -82,21 +87,22 @@ export ROS_DOMAIN_ID=22
 make px4_sitl gz_x500_mono_cam_down_forest
 
 export ROS_DOMAIN_ID=22
-source /opt/ros/humble/setup.bash
-source ~/VINS/install/setup.bash
+
+source /opt/ros/jazzy/setup.bash
+source /home/pihuy/precision_plan_moving_target/install/setup.bash
 ros2 launch vins_px4_bringup px4_vins_test.launch.py
 
 -- xem hinh --
 
 export ROS_DOMAIN_ID=22
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 source ~/VINS/install/setup.bash
 rqt
 
 -- xem map --
 
 export ROS_DOMAIN_ID=22
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 source ~/VINS/install/setup.bash
 rviz2
 

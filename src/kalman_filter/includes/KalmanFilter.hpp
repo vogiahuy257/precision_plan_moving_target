@@ -6,7 +6,6 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
-#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
 
 #include <px4_msgs/msg/vehicle_local_position.hpp>
@@ -153,21 +152,6 @@ private:
      *     data_.runtime duoc cap nhat.
      */
     void resetCallback(const std_msgs::msg::String::SharedPtr msg);
-
-    /**
-     * Callback nhan target_valid.
-     *
-     * Input:
-     *     msg: std_msgs::msg::Bool::SharedPtr
-     *
-     * Logic:
-     *     Neu target khong hop le thi bat che do hold.
-     *     Neu target hop le tro lai thi tat forceZero.
-     *
-     * Output:
-     *     data_.runtime duoc cap nhat.
-     */
-    void validCallback(const std_msgs::msg::Bool::SharedPtr msg);
 
     /**
      * Callback nhan odometry quaternion cua drone.
@@ -362,7 +346,6 @@ private:
 
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr poseSub_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr resetSub_;
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr validSub_;
     rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr vehicleOdomSub_;
     rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr vehicleLocalPosSub_;
 

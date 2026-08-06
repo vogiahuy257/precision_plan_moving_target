@@ -1,206 +1,149 @@
 %YAML:1.0
 
-# ============================================================
-# CONFIG VINS-MONO-ROS2 CHO PX4 SIM
-# Camera: /cam0/image_raw
-# IMU   : /imu0
-# Output: /home/cheese/VINS/vins_output/
-# ============================================================
+# =========================
+# VINS-MONO REALTIME ODOMETRY TEST
+# Camera + PX4 IMU
+# =========================
 
-# ============================================================
-# 1. THAM SO CHUNG
-# ============================================================
-
-# Topic IMU da duoc bridge tu PX4 SensorCombined sang sensor_msgs/Imu
-imu_topic: "/fmu/out/sensor_combined"
-
-# Topic anh camera mono8 cho feature_tracker
+imu_topic: "/imu0"
 image_topic: "/camera/image"
 
-# Thu muc luu output cua VINS, dat trong project
-output_path: "/home/cheese/VINS/vins_output/"
+output_path: "/home/pihuy/precision_plan_moving_target/vins_output/"
 
+# =========================
+# Camera model
+# =========================
 
-# ============================================================
-# 2. NOI TAI CAMERA
-# ============================================================
-
-# Mo hinh camera thuong
 model_type: PINHOLE
-
-# Ten camera
 camera_name: camera
 
-# Kich thuoc anh, phai khop voi /cam0/image_raw
 image_width: 640
 image_height: 480
 
-# Thong so meo anh
-# k1, k2: meo xuyen tam
-# p1, p2: meo tiep tuyen
-# Mo phong tam de 0
 distortion_parameters:
-   k1: 0.0
-   k2: 0.0
-   p1: 0.0
-   p2: 0.0
+   k1: -0.353426
+   k2: 0.132852
+   p1: -0.002342
+   p2: -0.000467
 
-# Thong so intrinsic camera
-# fx, fy: tieu cu theo pixel
-# cx, cy: tam anh
-# Gia tri nay la tam thoi de test, sau nay nen lay dung tu SDF/camera_info/calibration
 projection_parameters:
-   fx: 271.3
-   fy: 271.3
-   cx: 320.0
-   cy: 240.0
+   fx: 768.59071
+   fy: 767.65667
+   cx: 312.58459
+   cy: 213.52393
 
+# =========================
+# Camera-IMU extrinsic
+# =========================
 
-# ============================================================
-# 3. NGOAI TAI GIUA IMU VA CAMERA
-# ============================================================
-
-# estimate_extrinsic:
-# 0 = tin hoan toan vao R,T ben duoi
-# 1 = dung R,T ben duoi lam gia tri ban dau va cho VINS tinh chinh
-# 2 = VINS tu uoc luong extrinsic
-# Hien tai camera down va extrinsic chua chac chinh xac, nen de 1.
 estimate_extrinsic: 0
 
-# Ma tran quay tu camera frame sang IMU frame: imu^R_cam
-# Dang de gan dung cho camera nhin xuong.
-# De data tren mot dong de OpenCV FileStorage khong bi loi indentation.
+# extrinsicRotation: !!opencv-matrix
+#    rows: 3
+#    cols: 3
+#    dt: d
+#    data: [ -0.99059949400320702, 0.13017021372302159, -0.042051848233979512,
+#            0.0834971229730226, 0.81886920982567013, 0.5678744999158799,
+#            0.1083553087569719, 0.55902498393075917, -0.82204026325077062 ]
+
+# extrinsicTranslation: !!opencv-matrix
+#    rows: 3
+#    cols: 1
+#    dt: d
+#    data: [ 0.0046613610673365106,
+#            -0.011192732279155069,
+#            -0.095092993982251101 ]
+
+# extrinsicRotation: !!opencv-matrix
+#    rows: 3
+#    cols: 3
+#    dt: d
+#    data: [ -0.99059949400320702, 0.13017021372302159,-0.042051848233979512, 
+#           0.0834971229730226, 0.81886920982567013, 0.5678744999158799, 
+#           0.1083553087569719, 0.55902498393075917,-0.82204026325077062 ]
+# extrinsicTranslation: !!opencv-matrix
+#    rows: 3
+#    cols: 1
+#    dt: d
+#    data: [ 0.0046613610673365106, -0.011192732279155069,
+#        -0.095092993982251101 ]
+
 extrinsicRotation: !!opencv-matrix
    rows: 3
    cols: 3
    dt: d
-   data: [0.0, -1.0, 0.0, 
-         -1.0, 0.0, 0.0, 
-         0.0, 0.0, -1.0]
+   data: [-0.99059949400320702, 0.13017021372302159, -0.042051848233979512, 
+         0.0834971229730226, -0.81886920982567013, 0.5678744999158799,
+          0.1083553087569719, 0.55902498393075917, -0.82204026325077062]
 
-# Vector tinh tien tu camera sang IMU: imu^T_cam
-# Don vi: met
-# Camera nam thap hon IMU 12 cm thi z = -0.12 trong he IMU FLU
 extrinsicTranslation: !!opencv-matrix
    rows: 3
    cols: 1
    dt: d
-   data: [0.0, 0.0, -0.12]
+   data: [0.0046613610673365106, -0.011192732279155069, -0.095092993982251101]
 
+# =========================
+# Feature tracker
+# =========================
 
-# ============================================================
-# 4. FEATURE TRACKER
-# ============================================================
-
-# So feature toi da trong moi frame
 max_cnt: 120
-
-# Khoang cach toi thieu giua 2 feature
-min_dist: 20
-
-# Tan so publish feature, 10 Hz la on cho test dau
-# Neu muon bang tan so camera thi dat 0
-freq: 20
-
-# Nguong RANSAC loc feature sai
+min_dist: 12
+freq: 30
 F_threshold: 1.0
-
-# 1 = publish anh debug feature tracking
-show_track: 1
-
-# 1 = can bang sang neu anh qua toi/sang
-equalize: 0
-
-# 0 = camera pinhole, 1 = fisheye mask
+show_track: 0
+equalize: 1
 fisheye: 0
 
+# =========================
+# Estimator solver
+# =========================
 
-# ============================================================
-# 5. TOI UU HOA
-# ============================================================
+# 30 Hz tương ứng mỗi frame khoảng 0.033s.
+# Để 0.03 giúp realtime hơn.
+max_solver_time: 0.03
+max_num_iterations: 6
+keyframe_parallax: 10.0
 
-# Thoi gian toi da cho solver moi lan toi uu
-max_solver_time: 0.04
+# =========================
+# IMU noise
+# =========================
+# Giá trị cũ 0.000005 quá nhỏ, làm VINS tin IMU gần như tuyệt đối.
+# Bộ giá trị này thực tế hơn để test với PX4 IMU.
+acc_n: 0.00008
+gyr_n: 0.00004
+acc_w: 0.00001
+gyr_w: 0.00001
+g_norm: 9.805
 
-# So vong lap toi uu toi da
-max_num_iterations: 8
+# =========================
+# Loop closure / pose graph
+# =========================
+# Khi test odometry realtime lần đầu, phải tắt.
+# Nếu bật sớm, pose có thể bị nhảy do relocalization hoặc map cũ.
 
-# Nguong parallax chon keyframe
-keyframe_parallax: 5.0
-
-
-# ============================================================
-# 6. THAM SO NHIEU IMU
-# ============================================================
-
-# Nhieu accelerometer
-acc_n: 0.08
-
-# Nhieu gyroscope
-gyr_n: 0.004
-
-# Bias random walk accelerometer
-acc_w: 0.00004
-
-# Bias random walk gyroscope
-gyr_w: 2.0e-6
-
-# Do lon trong luc
-g_norm: 9.81007
-
-
-# ============================================================
-# 7. LOOP CLOSURE / POSE GRAPH
-# ============================================================
-
-# 1 = bat loop closure
-loop_closure: 1
-
-# 0 = khong load pose graph cu
+loop_closure: 0
 load_previous_pose_graph: 0
-
-# 0 = tat fast relocalization luc test dau
 fast_relocalization: 0
+pose_graph_save_path: "/home/pihuy/precision_plan_moving_target/vins_output/pose_graph/"
 
-# Thu muc luu pose graph
-pose_graph_save_path: "/home/cheese/VINS/vins_output/pose_graph/"
+# =========================
+# Time delay camera-IMU
+# =========================
 
-# Thu muc chua support files cho pose_graph
-support_path: "/home/cheese/VINS/src/VINS-MONO-ROS2/config_pkg/support_files"
-
-
-# ============================================================
-# 8. DONG BO THOI GIAN CAMERA - IMU
-# ============================================================
-
-# 0 = khong uoc luong online time offset
-# Vi camera va IMU deu dang dung ROS2 now nen tam de 0
 estimate_td: 0
+td: 0.000
 
-# Do lech thoi gian ban dau, don vi giay
-td: 0.0
+# =========================
+# Rolling shutter
+# =========================
 
-
-# ============================================================
-# 9. ROLLING SHUTTER
-# ============================================================
-
-# 0 = global shutter/mo phong
 rolling_shutter: 0
-
-# Thoi gian readout rolling shutter, khong quan trong neu rolling_shutter = 0
 rolling_shutter_tr: 0
 
+# =========================
+# Save / visualization
+# =========================
 
-# ============================================================
-# 10. HIEN THI VA LUU ANH
-# ============================================================
-
-# 1 = luu anh keyframe cho pose_graph, ton o cung hon
 save_image: 0
-
-# 1 = publish them IMU forward propagation
 visualize_imu_forward: 0
-
-# Kich thuoc marker camera trong RViz
 visualize_camera_size: 0.4

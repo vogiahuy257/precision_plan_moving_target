@@ -24,14 +24,6 @@ Imx219CameraNode::Imx219CameraNode()
         std::chrono::duration_cast<std::chrono::nanoseconds>(period),
         std::bind(&Imx219CameraNode::publishFrame, this));
 
-    RCLCPP_INFO(get_logger(), "IMX219 camera node started");
-    RCLCPP_INFO(get_logger(), "image_topic       : %s", image_topic_.c_str());
-    RCLCPP_INFO(get_logger(), "camera_info_topic : %s", camera_info_topic_.c_str());
-    RCLCPP_INFO(get_logger(), "resolution        : %dx%d", width_, height_);
-    RCLCPP_INFO(get_logger(), "fps               : %.2f", fps_);
-    RCLCPP_INFO(get_logger(), "frame_id          : %s", frame_id_.c_str());
-    RCLCPP_INFO(get_logger(), "output_encoding   : %s", output_encoding_.c_str());
-
     if (publish_camera_info_) {
         RCLCPP_INFO(get_logger(), "camera_info       : enabled");
     } else {
@@ -60,14 +52,14 @@ void Imx219CameraNode::declareParameters()
     // Dạng chuẩn camera_info_manager:
     // file:///home/pihuy/.../camera_info.yaml
     // Nếu rỗng hoặc file không tồn tại thì KHÔNG publish camera_info.
-    declare_parameter<std::string>("camera_info_url", "");
+    declare_parameter<std::string>("camera_info_url", "/home/pihuy/precision_plan_moving_target/calibration/ost.yaml");
 
     // Pipeline để trong YAML, không hard-code trong logic node.
     declare_parameter<std::string>("gst_pipeline", "");
 
     // bgr8: ảnh màu OpenCV BGR
     // mono8: ảnh trắng đen grayscale
-    declare_parameter<std::string>("output_encoding", "bgr8");
+    declare_parameter<std::string>("output_encoding", "mono8");
 }
 
 void Imx219CameraNode::loadParameters()
@@ -121,20 +113,12 @@ void Imx219CameraNode::setupCameraInfo()
     }
 
     if (camera_info_url_.rfind("file://", 0) != 0) {
-        RCLCPP_WARN(
-            get_logger(),
-            "camera_info_url must start with file://, got: %s",
-            camera_info_url_.c_str());
         return;
     }
 
     const std::string path = camera_info_url_.substr(std::string("file://").size());
 
     if (!std::filesystem::exists(path)) {
-        RCLCPP_WARN(
-            get_logger(),
-            "camera_info file does not exist: %s",
-            path.c_str());
         return;
     }
 
@@ -145,10 +129,6 @@ void Imx219CameraNode::setupCameraInfo()
             camera_info_url_);
 
     if (!camera_info_manager_->isCalibrated()) {
-        RCLCPP_WARN(
-            get_logger(),
-            "camera_info file exists but is not calibrated/valid: %s",
-            path.c_str());
         return;
     }
 
@@ -157,25 +137,11 @@ void Imx219CameraNode::setupCameraInfo()
         rclcpp::SensorDataQoS());
 
     publish_camera_info_ = true;
-
-    RCLCPP_INFO(
-        get_logger(),
-        "Loaded camera_info: %s",
-        path.c_str());
 }
 
 void Imx219CameraNode::openCamera()
 {
-    RCLCPP_INFO(get_logger(), "Opening GStreamer pipeline:");
-    RCLCPP_INFO(get_logger(), "%s", gst_pipeline_.c_str());
-
     capture_.open(gst_pipeline_, cv::CAP_GSTREAMER);
-
-    if (!capture_.isOpened()) {
-        throw std::runtime_error("Failed to open camera pipeline");
-    }
-
-    RCLCPP_INFO(get_logger(), "Camera pipeline opened");
 }
 
 sensor_msgs::msg::Image Imx219CameraNode::makeImageMsg(
@@ -199,38 +165,47 @@ sensor_msgs::msg::Image Imx219CameraNode::makeImageMsg(
 
     return msg;
 }
-
 void Imx219CameraNode::publishFrame()
 {
     cv::Mat frame;
 
     if (!capture_.read(frame) || frame.empty()) {
-        RCLCPP_WARN_THROTTLE(
-            get_logger(),
-            *get_clock(),
-            2000,
-            "Failed to read frame");
-        return;
-    }
-
-    // Pipeline hiện tại phải xuất ra BGR:
-    // ... ! video/x-raw,format=BGR ! appsink ...
-    if (frame.type() != CV_8UC3) {
-        RCLCPP_WARN_THROTTLE(
-            get_logger(),
-            *get_clock(),
-            2000,
-            "Expected BGR CV_8UC3 frame from pipeline, got OpenCV type: %d",
-            frame.type());
         return;
     }
 
     cv::Mat output_frame;
 
     if (output_encoding_ == sensor_msgs::image_encodings::MONO8) {
-        cv::cvtColor(frame, output_frame, cv::COLOR_BGR2GRAY);
+
+        if (frame.type() == CV_8UC1) {
+            // Pipeline đã xuất GRAY8 rồi.
+            // Không cần convert nữa, publish thẳng mono8.
+            output_frame = frame;
+
+        } else if (frame.type() == CV_8UC3) {
+            // Pipeline xuất BGR, convert sang mono8.
+            cv::cvtColor(frame, output_frame, cv::COLOR_BGR2GRAY);
+
+        } else {
+            return;
+        }
+
+    } else if (output_encoding_ == sensor_msgs::image_encodings::BGR8) {
+
+        if (frame.type() == CV_8UC3) {
+            // Pipeline đã xuất BGR rồi.
+            output_frame = frame;
+
+        } else if (frame.type() == CV_8UC1) {
+            // Pipeline xuất GRAY8 nhưng user yêu cầu bgr8.
+            cv::cvtColor(frame, output_frame, cv::COLOR_GRAY2BGR);
+
+        } else {
+            return;
+        }
+
     } else {
-        output_frame = frame;
+        return;
     }
 
     if (!output_frame.isContinuous()) {

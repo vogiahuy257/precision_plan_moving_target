@@ -2,7 +2,7 @@ imx219_camera_node:
   ros__parameters:
     width: 640
     height: 480
-    fps: 30.0
+    fps: 33.0
 
     frame_id: "camera_optical_frame"
 
@@ -13,4 +13,4 @@ imx219_camera_node:
 
     output_encoding: "mono8"
 
-    gst_pipeline: "libcamerasrc ! video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! videoconvert ! video/x-raw,format=BGR,width=640,height=480 ! appsink drop=true max-buffers=1 sync=false"
+    gst_pipeline: "libcamerasrc ! video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=GRAY8,width=640,height=480,framerate=30/1 ! appsink drop=true max-buffers=1 sync=false"

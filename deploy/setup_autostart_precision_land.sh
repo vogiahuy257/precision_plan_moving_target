@@ -18,7 +18,6 @@ LEGACY_SERVICES=(
   "aruco-tracker.service"
   "kalmanfilter.service"
   "precision-land.service"
-  "eth0-force-10mbps.service"
 )
 
 SERVICES=(

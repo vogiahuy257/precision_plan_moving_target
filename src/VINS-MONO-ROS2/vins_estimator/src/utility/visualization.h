@@ -10,9 +10,9 @@
 #include <sensor_msgs/image_encodings.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <nav_msgs/msg/odometry.hpp>
-#include <geometry_msgs/msg/point_stamped.h>
-#include <visualization_msgs/msg/marker.h>
-#include <tf2_ros/transform_broadcaster.h>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <tf2_ros/transform_broadcaster.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Transform.h>
 #include "CameraPoseVisualization.h"

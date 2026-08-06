@@ -512,7 +512,7 @@ kalman_filter_data::DebugLogRow DebugLogger::buildRow(
 
         row.initialized = data.runtime.initialized;
         row.forceZero = data.runtime.forceZero;
-        row.targetValid = data.runtime.targetValid;
+        row.targetValid = 1;
         row.vehicleOdomValid = data.runtime.vehicleOdomValid;
         row.vehicleLocalPosValid = data.runtime.vehicleLocalPosValid;
 
