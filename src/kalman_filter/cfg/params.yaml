@@ -8,9 +8,11 @@
     topics.reset_command: "/Aruco/target_state"
     topics.vehicle_odometry: "/fmu/out/vehicle_odometry"
     topics.vehicle_local_position: "/fmu/out/vehicle_local_position_v1"
-    topics.relative_position_raw: "/KalmanFilter/target_pose_NED"
-    topics.relative_position_predicted: "/KalmanFilter/target_pose_est_NED"
-    topics.relative_velocity: "/KalmanFilter/target_velocity_est_NED"
+    topics.relative_position_raw: "/KF/target_pose_NED"
+    topics.relative_position_predicted: "/KF/target_pose_est_NED"
+    topics.relative_velocity: "/KF/target_velocity_est_NED"
+    topics.covariance: "/KF/target_covariance_NE"
+    topics.process_noise: "/KF/process_noise"
 
     frame_id: "map"
 

@@ -1,0 +1,10 @@
+/**:
+  ros__parameters:
+    estimator:
+      model: "ekf"
+    topics:
+      target_pose: "/EKF/target_pose_est_NED"
+      target_velocity: "/EKF/target_velocity_est_NED"
+      target_motion: "/EKF/target_motion"
+      target_covariance: "/EKF/target_covariance_NE"
+      target_process_noise: "/EKF/process_noise"

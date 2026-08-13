@@ -1,0 +1,54 @@
+/**:
+  ros__parameters:
+    pose_timeout_s: 3.0
+
+    topics.input_target_pose: "/Aruco/target_pose_FRD"
+    topics.reset_command: "/Aruco/target_state"
+    topics.vehicle_odometry: "/fmu/out/vehicle_odometry"
+    topics.vehicle_local_position: "/fmu/out/vehicle_local_position_v1"
+
+    topics.relative_position_raw: "/EKF/target_pose_NED"
+    topics.relative_position_predicted: "/EKF/target_pose_est_NED"
+    topics.relative_velocity: "/EKF/target_velocity_est_NED"
+    topics.motion: "/EKF/target_motion"
+    topics.covariance: "/EKF/target_covariance_NE"
+    topics.process_noise: "/EKF/process_noise"
+
+    frame_id: "map"
+
+    # EKF CTRA state: [pN, pE, v, psi, a, omega]
+    # a and omega are random walks, matching the paper model.
+    q_acc: 0.20
+    q_turn_rate: 0.20
+
+    # Position measurement covariance in N/E.
+    r_pos_n: 0.008
+    r_pos_e: 0.008
+
+    # NIS gate for the 2-D position innovation.
+    # Initial value only; validate/tune with real data.
+    nis_threshold: 9.21
+
+    # Numerical settings.
+    turn_rate_epsilon: 0.001
+    predict_step_s: 0.02
+
+    # Bootstrap from two position measurements.
+    init.min_dt_s: 0.20
+    init.max_dt_s: 1.00
+    init.min_speed_m_s: 0.10
+    init.motion_nis_threshold: 9.21
+    init.window_size: 15
+
+    # Initial posterior covariance P0.
+    init.var_p_n: 0.008
+    init.var_p_e: 0.008
+    init.var_speed: 1.0
+    init.var_heading: 3.0
+    init.var_acc: 1.0
+    init.var_turn_rate: 0.25
+
+    # Same fixed belly-camera offset as the current KF.
+    transform.camera_offset_x: 0.2
+    transform.camera_offset_y: 0.0
+    transform.camera_offset_z: -0.12

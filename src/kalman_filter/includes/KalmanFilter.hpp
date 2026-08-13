@@ -7,6 +7,7 @@
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <px4_msgs/msg/vehicle_odometry.hpp>
@@ -352,6 +353,8 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr targetPoseRawPub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr targetPoseFilteredPub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr targetRelVelPub_;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr targetCovariancePub_;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr targetProcessNoisePub_;
 
 
     cv::KalmanFilter kf_;

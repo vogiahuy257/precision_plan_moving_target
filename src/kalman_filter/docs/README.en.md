@@ -137,9 +137,11 @@ This figure shows the real execution order:
 
 ### Output
 
-- `/KalmanFilter/target_pose_NED`
-- `/KalmanFilter/target_pose_est_NED`
-- `/KalmanFilter/target_velocity_est_NED`
+- `/KF/target_pose_NED`
+- `/KF/target_pose_est_NED`
+- `/KF/target_velocity_est_NED`
+- `/KF/target_covariance_NE`
+- `/KF/process_noise`
 
 ---
 

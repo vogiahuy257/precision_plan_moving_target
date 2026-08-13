@@ -22,9 +22,11 @@ struct TopicConfig
     std::string resetCommandTopic{"/Aruco/target_state"};
     std::string vehicleOdometryTopic{"/fmu/out/vehicle_odometry"};
     std::string vehicleLocalPositionTopic{"/fmu/out/vehicle_local_position"};
-    std::string relativePositionRawTopic{"/KalmanFilter/target_pose_NED"};
-    std::string relativePositionPredictedTopic{"/KalmanFilter/target_pose_est_NED"};
-    std::string relativeVelocityTopic{"/KalmanFilter/target_velocity_est_NED"};
+    std::string relativePositionRawTopic{"/KF/target_pose_NED"};
+    std::string relativePositionPredictedTopic{"/KF/target_pose_est_NED"};
+    std::string relativeVelocityTopic{"/KF/target_velocity_est_NED"};
+    std::string covarianceTopic{"/KF/target_covariance_NE"};
+    std::string processNoiseTopic{"/KF/process_noise"};
     std::string outputFrameId{"map"};
 };
 

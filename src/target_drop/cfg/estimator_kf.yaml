@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    estimator:
+      model: "kf"
+    topics:
+      target_pose: "/KF/target_pose_est_NED"
+      target_velocity: "/KF/target_velocity_est_NED"
+      target_covariance: "/KF/target_covariance_NE"
+      target_process_noise: "/KF/process_noise"

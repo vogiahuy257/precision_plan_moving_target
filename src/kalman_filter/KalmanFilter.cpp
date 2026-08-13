@@ -96,6 +96,24 @@ KalmanFilterNode::KalmanFilterNode()
             data_.config.topics.relativeVelocityTopic,
             pubQos);
 
+        targetCovariancePub_ = create_publisher<std_msgs::msg::Float64MultiArray>(
+            data_.config.topics.covarianceTopic,
+            pubQos);
+
+        // Static filter process-noise interface for target_drop.
+        // CV state used by target_drop: [pN, pE, vN, vE].
+        // data[0] = q_acc_N, data[1] = q_acc_E.
+        const auto configQos = rclcpp::QoS(1).reliable().transient_local();
+        targetProcessNoisePub_ = create_publisher<std_msgs::msg::Float64MultiArray>(
+            data_.config.topics.processNoiseTopic,
+            configQos);
+
+        std_msgs::msg::Float64MultiArray processNoiseMsg;
+        processNoiseMsg.data = {
+            data_.config.noise.qAccX,
+            data_.config.noise.qAccY};
+        targetProcessNoisePub_->publish(processNoiseMsg);
+
         data_.timing.lastPredictTime = rclcpp::Time(0, 0, get_clock()->get_clock_type());
         data_.timing.lastMeasurementTime = rclcpp::Time(0, 0, get_clock()->get_clock_type());
 
@@ -152,9 +170,11 @@ void KalmanFilterNode::declareParameters()
         declare_parameter<std::string>("topics.reset_command", "/Aruco/target_state");
         declare_parameter<std::string>("topics.vehicle_odometry", "/fmu/out/vehicle_odometry");
         declare_parameter<std::string>("topics.vehicle_local_position", "/fmu/out/vehicle_local_position_v1");
-        declare_parameter<std::string>("topics.relative_position_raw", "/KalmanFilter/target_pose_NED");
-        declare_parameter<std::string>("topics.relative_position_predicted", "/KalmanFilter/target_pose_est_NED");
-        declare_parameter<std::string>("topics.relative_velocity", "/KalmanFilter/target_velocity_est_NED");
+        declare_parameter<std::string>("topics.relative_position_raw", "/KF/target_pose_NED");
+        declare_parameter<std::string>("topics.relative_position_predicted", "/KF/target_pose_est_NED");
+        declare_parameter<std::string>("topics.relative_velocity", "/KF/target_velocity_est_NED");
+        declare_parameter<std::string>("topics.covariance", "/KF/target_covariance_NE");
+        declare_parameter<std::string>("topics.process_noise", "/KF/process_noise");
 
         declare_parameter<std::string>("frame_id", "map");
         declare_parameter<double>("pose_timeout_s", 3.0);
@@ -216,6 +236,8 @@ void KalmanFilterNode::loadParameters()
         get_parameter("topics.relative_position_raw", data_.config.topics.relativePositionRawTopic);
         get_parameter("topics.relative_position_predicted", data_.config.topics.relativePositionPredictedTopic);
         get_parameter("topics.relative_velocity", data_.config.topics.relativeVelocityTopic);
+        get_parameter("topics.covariance", data_.config.topics.covarianceTopic);
+        get_parameter("topics.process_noise", data_.config.topics.processNoiseTopic);
 
         get_parameter("pose_timeout_s", data_.config.poseTimeoutSec);
         get_parameter("frame_id", data_.config.topics.outputFrameId);
@@ -993,7 +1015,8 @@ void KalmanFilterNode::publishEstimatedState(const rclcpp::Time &measurementTime
 {
     try
     {
-        if (!targetPoseRawPub_ || !targetPoseFilteredPub_ || !targetRelVelPub_)
+        if (!targetPoseRawPub_ || !targetPoseFilteredPub_ ||
+            !targetRelVelPub_ || !targetCovariancePub_)
         {
             throw std::runtime_error("One or more publishers are null");
         }
@@ -1048,6 +1071,25 @@ void KalmanFilterNode::publishEstimatedState(const rclcpp::Time &measurementTime
         velocityMsg.pose.orientation.y = data_.targetMeasurement.orientationWorld.y();
         velocityMsg.pose.orientation.z = data_.targetMeasurement.orientationWorld.z();
         targetRelVelPub_->publish(velocityMsg);
+
+        // Common CV covariance interface for target_drop.
+        // Row-major state order: [pN, pE, vN, vE].
+        std_msgs::msg::Float64MultiArray covarianceMsg;
+        covarianceMsg.data.resize(16);
+        const int stateIndex[4] = {0, 1, 3, 4};
+
+        for (int row = 0; row < 4; ++row)
+        {
+            for (int col = 0; col < 4; ++col)
+            {
+                covarianceMsg.data[static_cast<std::size_t>(row * 4 + col)] =
+                    kf_.errorCovPost.at<double>(
+                        stateIndex[row],
+                        stateIndex[col]);
+            }
+        }
+
+        targetCovariancePub_->publish(covarianceMsg);
 
         KF_DEBUG(
             get_logger(),

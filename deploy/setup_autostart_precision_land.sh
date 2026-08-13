@@ -17,15 +17,18 @@ LEGACY_SERVICES=(
   "imx219_camera.service"
   "aruco-tracker.service"
   "kalmanfilter.service"
-  "precision-land.service"
+  "kf.service"
+  "ekf.service"
+  "target_drop.service"
 )
 
 SERVICES=(
   "microxrce-agent.service"
   "imx219_camera.service"
   "aruco-tracker.service"
-  "kalmanfilter.service"
-  "precision-land.service"
+  "kf.service"
+  "ekf.service"
+  "target_drop.service"
 )
 
 echo "[INFO] Checking service scripts permissions..."
