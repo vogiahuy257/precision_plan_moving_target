@@ -1,4 +1,4 @@
-imx219_camera_node:
+/**:
   ros__parameters:
     width: 640
     height: 480

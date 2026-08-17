@@ -129,7 +129,7 @@ Hình này mô tả thứ tự thực thi thực tế:
 
 ### Input
 
-- `/Aruco/target_pose_FRD`
+- `/Aruco/target_pose_optical`
 - `/Aruco/target_state`
 - `/target_valid`
 - `/fmu/out/vehicle_odometry`

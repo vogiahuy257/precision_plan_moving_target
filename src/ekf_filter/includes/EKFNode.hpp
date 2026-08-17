@@ -49,6 +49,8 @@ private:
 
     void publishRaw(const rclcpp::Time &stamp);
     void publishEstimate(const rclcpp::Time &stamp);
+    void publishEstimateFromFilter(const CtraEkf &filter, const rclcpp::Time &stamp);
+    void publishLostPrediction(const rclcpp::Time &stamp);
     void publishHold(const rclcpp::Time &stamp);
     void publishCovariance(const CtraEkf::Matrix6d &covariance);
     void publishProcessNoise();
@@ -94,6 +96,12 @@ private:
 
     rclcpp::Time lastPredictTime_{0, 0, RCL_ROS_TIME};
     bool forceHold_{false};
+
+    // LOST mode keeps the main EKF untouched. A snapshot is propagated only
+    // for output until ArUco is reacquired or sends RESET after 5 seconds.
+    bool targetLost_{false};
+    CtraEkf lostEkfSnapshot_{};
+    rclcpp::Time lostStateStamp_{0, 0, RCL_ROS_TIME};
 
     // ROS interfaces.
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr poseSub_;

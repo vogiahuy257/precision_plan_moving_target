@@ -34,7 +34,7 @@ EKFNode::EKFNode()
 
 void EKFNode::declareParameters()
 {
-    declare_parameter<std::string>("topics.input_target_pose", "/Aruco/target_pose_FRD");
+    declare_parameter<std::string>("topics.input_target_pose", "/Aruco/target_pose_optical");
     declare_parameter<std::string>("topics.reset_command", "/Aruco/target_state");
     declare_parameter<std::string>("topics.vehicle_odometry", "/fmu/out/vehicle_odometry");
     declare_parameter<std::string>("topics.vehicle_local_position", "/fmu/out/vehicle_local_position_v1");
@@ -141,9 +141,10 @@ void EKFNode::setupRosInterfaces()
         qos,
         std::bind(&EKFNode::poseCallback, this, std::placeholders::_1));
 
+    const auto stateQos = rclcpp::QoS(10).reliable();
     resetSub_ = create_subscription<std_msgs::msg::String>(
         resetCommandTopic_,
-        qos,
+        stateQos,
         std::bind(&EKFNode::resetCallback, this, std::placeholders::_1));
 
     vehicleOdomSub_ = create_subscription<px4_msgs::msg::VehicleOdometry>(
@@ -172,6 +173,10 @@ void EKFNode::resetFilter()
     ekf_.reset();
     bootstrapSamples_.clear();
     lastPredictTime_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+
+    targetLost_ = false;
+    lostEkfSnapshot_.reset();
+    lostStateStamp_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
 }
 
 void EKFNode::vehicleOdometryCallback(
@@ -228,6 +233,11 @@ void EKFNode::vehicleLocalPositionCallback(
     {
         frameTransformer_.setVehicleState(vehiclePositionNed_, worldFromBody_);
     }
+
+    if (targetLost_)
+    {
+        publishLostPrediction(now());
+    }
 }
 
 void EKFNode::resetCallback(const std_msgs::msg::String::SharedPtr msg)
@@ -242,12 +252,37 @@ void EKFNode::resetCallback(const std_msgs::msg::String::SharedPtr msg)
         resetFilter();
         forceHold_ = true;
         publishHold(now());
+
+        RCLCPP_INFO(get_logger(), "%s target RESET -> filter reset", kPrefix);
+        return;
+    }
+
+    if (msg->data == "LOST")
+    {
+        if (!targetLost_)
+        {
+            targetLost_ = true;
+
+            if (ekf_.initialized() && lastPredictTime_.nanoseconds() > 0)
+            {
+                lostEkfSnapshot_ = ekf_;
+                lostStateStamp_ = lastPredictTime_;
+
+                RCLCPP_INFO(
+                    get_logger(),
+                    "%s target LOST -> prediction-only",
+                    kPrefix);
+            }
+        }
         return;
     }
 
     if (msg->data == "ACTIVE")
     {
         forceHold_ = false;
+        targetLost_ = false;
+        lostEkfSnapshot_.reset();
+        lostStateStamp_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
     }
 }
 
@@ -264,6 +299,15 @@ void EKFNode::poseCallback(
         !std::isfinite(msg->pose.position.z))
     {
         return;
+    }
+
+    if (targetLost_)
+    {
+        targetLost_ = false;
+        lostEkfSnapshot_.reset();
+        lostStateStamp_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+
+        RCLCPP_INFO(get_logger(), "%s target reacquired -> measurement update", kPrefix);
     }
 
     rclcpp::Time stamp = msg->header.stamp;
@@ -464,12 +508,19 @@ void EKFNode::publishRaw(const rclcpp::Time &stamp)
 
 void EKFNode::publishEstimate(const rclcpp::Time &stamp)
 {
-    if (!ekf_.initialized())
+    publishEstimateFromFilter(ekf_, stamp);
+}
+
+void EKFNode::publishEstimateFromFilter(
+    const CtraEkf &filter,
+    const rclcpp::Time &stamp)
+{
+    if (!filter.initialized())
     {
         return;
     }
 
-    const CtraEkf::Vector6d &x = ekf_.state();
+    const CtraEkf::Vector6d &x = filter.state();
     const double speed = x(2);
     const double psi = x(3);
     const double vN = speed * std::cos(psi);
@@ -498,7 +549,44 @@ void EKFNode::publishEstimate(const rclcpp::Time &stamp)
     motionMsg.data = {x(4), x(5)};
     motionPub_->publish(motionMsg);
 
-    publishCovariance(ekf_.covariance());
+    publishCovariance(filter.covariance());
+}
+
+void EKFNode::publishLostPrediction(const rclcpp::Time &stamp)
+{
+    if (!targetLost_ ||
+        !lostEkfSnapshot_.initialized() ||
+        lostStateStamp_.nanoseconds() == 0)
+    {
+        return;
+    }
+
+    const double dtSec = (stamp - lostStateStamp_).seconds();
+    if (!std::isfinite(dtSec) || dtSec <= 0.0)
+    {
+        return;
+    }
+
+    // Predict a temporary copy from the last measurement state.
+    // The main ekf_ stays untouched so reacquisition can predict directly
+    // from the last measurement timestamp and then correct cleanly.
+    CtraEkf predicted = lostEkfSnapshot_;
+    predicted.predict(dtSec);
+
+    publishEstimateFromFilter(predicted, stamp);
+
+    const CtraEkf::Vector6d &x = predicted.state();
+    RCLCPP_INFO_THROTTLE(
+        get_logger(),
+        *get_clock(),
+        1000,
+        "%s LOST prediction | dt=%.3f p=(%.3f, %.3f) v=%.3f psi=%.3f",
+        kPrefix,
+        dtSec,
+        x(0),
+        x(1),
+        x(2),
+        x(3));
 }
 
 void EKFNode::publishHold(const rclcpp::Time &stamp)

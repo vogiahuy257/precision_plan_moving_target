@@ -23,7 +23,7 @@
       slew_acc_m_s2: 0.88
 
     altitude:
-      release_height_m: 2.0
+      release_height_m: 3.0
       tolerance_m: 0.15
       kp: 0.4
       slew_acc_m_s2: 0.6

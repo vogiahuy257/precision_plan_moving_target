@@ -11,9 +11,7 @@ Restart=always
 KillSignal=SIGINT
 RestartSec=2
 
-# Select which estimator target_drop subscribes to: kf or ekf.
 Environment=TARGET_ESTIMATOR=kf
-
 Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 Environment=RMW_FASTRTPS_USE_SHM=0
 Environment=ROS_DOMAIN_ID=0

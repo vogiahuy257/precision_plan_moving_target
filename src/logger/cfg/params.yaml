@@ -1,3 +1,4 @@
 /**:
   ros__parameters:
     output_dir: "/home/pihuy/precision_plan_moving_target/data_logs/KF"
+    controller_output_dir: "/home/pihuy/precision_plan_moving_target/data_logs/TargetDrop"

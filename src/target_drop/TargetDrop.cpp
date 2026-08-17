@@ -59,7 +59,18 @@ TargetDrop::TargetDrop(rclcpp::Node &node)
     
     const auto loggerQos = rclcpp::QoS(1).reliable().transient_local();
 
-    _loggerEnablePub = _node.create_publisher<std_msgs::msg::Bool>("/logger/enable",loggerQos);
+    _loggerEnablePub = _node.create_publisher<std_msgs::msg::Bool>(
+        "/logger/enable", loggerQos);
+
+    const auto controlLogQos = rclcpp::QoS(50).reliable();
+
+    _controlErrorPub =
+        _node.create_publisher<geometry_msgs::msg::Vector3Stamped>(
+            "/TargetDrop/control_error", controlLogQos);
+
+    _controlOutputPub =
+        _node.create_publisher<geometry_msgs::msg::Vector3Stamped>(
+            "/TargetDrop/control_output", controlLogQos);
 
     modeRequirements().manual_control = false;
 }
@@ -365,8 +376,7 @@ void TargetDrop::targetStateCallback(const std_msgs::msg::String::SharedPtr msg)
     }
 }
 
-void TargetDrop::vehicleLocalPositionCallback(
-    const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg)
+void TargetDrop::vehicleLocalPositionCallback(const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg)
 {
     if (msg == nullptr)
     {
@@ -382,10 +392,11 @@ void TargetDrop::vehicleLocalPositionCallback(
 
 void TargetDrop::onActivate()
 {
-    _active = true;
     std_msgs::msg::Bool msg;
     msg.data = true;
     _loggerEnablePub->publish(msg);
+
+    _active = true;
     _distBottomValid = false;
     _target = {};
     _targetCov = {};
@@ -465,7 +476,9 @@ void TargetDrop::handleTrack(float dtSec)
 
     try
     {
-        const ReleasePlan plan = buildReleasePlan(_node.now());
+        const rclcpp::Time controlTime = _node.now();
+        const ReleasePlan plan = buildReleasePlan(controlTime);
+
         if (!plan.valid)
         {
             resetControllers();
@@ -489,6 +502,28 @@ void TargetDrop::handleTrack(float dtSec)
             std::nullopt,
             std::nullopt,
             std::nullopt);
+
+        // Controller evaluation data.
+        // error  = exact tracking error used by the controller.
+        // output = final velocity setpoint after PID/feed-forward/limits/slew.
+        geometry_msgs::msg::Vector3Stamped errorMsg;
+        errorMsg.header.stamp = controlTime;
+        errorMsg.header.frame_id = "NED";
+        errorMsg.vector.x = plan.errorXY.x();
+        errorMsg.vector.y = plan.errorXY.y();
+        errorMsg.vector.z =
+            (_distBottomValid && std::isfinite(_distBottom))
+                ? static_cast<double>(_distBottom - _paramReleaseHeightM)
+                : std::numeric_limits<double>::quiet_NaN();
+
+        geometry_msgs::msg::Vector3Stamped outputMsg;
+        outputMsg.header = errorMsg.header;
+        outputMsg.vector.x = velocityXY.x();
+        outputMsg.vector.y = velocityXY.y();
+        outputMsg.vector.z = velocityD;
+
+        _controlErrorPub->publish(errorMsg);
+        _controlOutputPub->publish(outputMsg);
 
         updateReleaseGate(plan);
     }

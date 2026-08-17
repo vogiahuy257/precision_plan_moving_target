@@ -129,7 +129,7 @@ This figure shows the real execution order:
 
 ### Input
 
-- `/Aruco/target_pose_FRD`
+- `/Aruco/target_pose_optical`
 - `/Aruco/target_state`
 - `/target_valid`
 - `/fmu/out/vehicle_odometry`

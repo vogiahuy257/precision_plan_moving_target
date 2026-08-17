@@ -3,7 +3,7 @@
     debug: false
     debug_csv_path: "kalman_logs/"
 
-    topics.input_target_pose: "/Aruco/target_pose_FRD"
+    topics.input_target_pose: "/Aruco/target_pose_optical"
     topics.reset_command: "/Aruco/target_state"
     topics.vehicle_odometry: "/fmu/out/vehicle_odometry"
     topics.vehicle_local_position: "/fmu/out/vehicle_local_position_v1"

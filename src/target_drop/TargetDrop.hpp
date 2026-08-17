@@ -10,6 +10,7 @@
 #include "DropPred.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
@@ -140,6 +141,8 @@ private:
     rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr _vehicleLocalPositionSub;
 
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr _loggerEnablePub;
+    rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr _controlErrorPub;
+    rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr _controlOutputPub;
 
     std::string _targetPoseTopic;
     std::string _targetVelocityTopic;

@@ -140,14 +140,15 @@ private:
     void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
 
     /**
-     * Callback nhan lenh RESET hoac ACTIVE.
+     * Callback nhan lenh ACTIVE, LOST hoac RESET.
      *
      * Input:
      *     msg: std_msgs::msg::String::SharedPtr
      *
      * Logic:
+     *     LOST thi giu state Kalman cu va chuyen sang prediction-only.
      *     RESET thi reset filter va bat che do hold.
-     *     ACTIVE thi tat forceZero va cho phep publish lai.
+     *     ACTIVE thi thoat prediction-only va cho phep measurement update lai.
      *
      * Output:
      *     data_.runtime duoc cap nhat.
@@ -217,6 +218,22 @@ private:
      *     kf_ duoc predict sang trang thai moi.
      */
     void predict(double dt);
+
+    /**
+     * Tao transition matrix F va process-noise matrix Q cho CV model.
+     * dt duoc tinh truc tiep tu timestamp, khong dung fixed prediction step.
+     */
+    void buildPredictionMatrices(
+        double dt,
+        cv::Mat &transition,
+        cv::Mat &processNoise) const;
+
+    /**
+     * Publish prediction tam thoi khi ArUco dang LOST.
+     * Ham nay khong thay doi kf_ chinh, de measurement khi quay lai van correct
+     * tu state tai measurement cuoi cung.
+     */
+    void publishLostPrediction(const rclcpp::Time &predictionTimestamp);
 
     /**
      * Cap nhat ma tran nhieu do R dong truoc buoc correct.
@@ -358,6 +375,12 @@ private:
 
 
     cv::KalmanFilter kf_;
+
+    bool targetLost_{false};
+    cv::Mat lostState_;
+    cv::Mat lostCovariance_;
+    rclcpp::Time lostStateStamp_{0, 0, RCL_ROS_TIME};
+
     frame_transform::FrameTransformer frameTransformer_;
     DynamicMeasurementNoiseEstimator dynamicMeasurementNoiseEstimator_;
     DebugLogger debugLogger_;

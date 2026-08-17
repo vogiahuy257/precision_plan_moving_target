@@ -18,7 +18,7 @@ enum class MountMode
 
 struct TopicConfig
 {
-    std::string inputTargetPoseTopic{"/Aruco/target_pose_FRD"};
+    std::string inputTargetPoseTopic{"/Aruco/target_pose_optical"};
     std::string resetCommandTopic{"/Aruco/target_state"};
     std::string vehicleOdometryTopic{"/fmu/out/vehicle_odometry"};
     std::string vehicleLocalPositionTopic{"/fmu/out/vehicle_local_position"};

@@ -69,9 +69,10 @@ KalmanFilterNode::KalmanFilterNode()
             subQos,
             std::bind(&KalmanFilterNode::poseCallback, this, std::placeholders::_1));
 
+        const auto stateQos = rclcpp::QoS(10).reliable();
         resetSub_ = create_subscription<std_msgs::msg::String>(
             data_.config.topics.resetCommandTopic,
-            subQos,
+            stateQos,
             std::bind(&KalmanFilterNode::resetCallback, this, std::placeholders::_1));
 
         vehicleOdomSub_ = create_subscription<px4_msgs::msg::VehicleOdometry>(
@@ -165,7 +166,7 @@ void KalmanFilterNode::declareParameters()
 {
     try
     {
-        declare_parameter<std::string>("topics.input_target_pose", "/Aruco/target_pose_FRD");
+        declare_parameter<std::string>("topics.input_target_pose", "/Aruco/target_pose_optical");
         declare_parameter<std::string>("topics.reset_command", "/Aruco/target_state");
         declare_parameter<std::string>("topics.vehicle_odometry", "/fmu/out/vehicle_odometry");
         declare_parameter<std::string>("topics.vehicle_local_position", "/fmu/out/vehicle_local_position_v1");
@@ -410,6 +411,10 @@ void KalmanFilterNode::resetState()
     try
     {
         data_.runtime.initialized = false;
+        targetLost_ = false;
+        lostState_.release();
+        lostCovariance_.release();
+        lostStateStamp_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
 
         kf_.statePost = cv::Mat::zeros(stateSize, 1, CV_64F);
         kf_.statePre = cv::Mat::zeros(stateSize, 1, CV_64F);
@@ -583,6 +588,13 @@ void KalmanFilterNode::vehicleLocalPositionCallback(
 
         data_.runtime.vehicleLocalPosValid = true;
         updateFrameTransformerVehicleState();
+
+        if (targetLost_ &&
+            data_.runtime.initialized &&
+            !data_.runtime.forceZero)
+        {
+            publishLostPrediction(now());
+        }
     }
     catch (const std::exception &exception)
     {
@@ -595,14 +607,14 @@ void KalmanFilterNode::vehicleLocalPositionCallback(
 }
 
 /**
- * Callback nhan lenh RESET hoac ACTIVE.
+ * Callback nhan lenh ACTIVE, LOST hoac RESET.
  *
  * Input:
  *     msg: std_msgs::msg::String::SharedPtr
  *
  * Logic:
- *     RESET thi reset filter va bat che do hold.
- *     ACTIVE thi tat forceZero va cho phep publish lai.
+ *     LOST thi prediction-only, RESET thi reset filter va hold.
+ *     ACTIVE thi quay lai measurement tracking.
  *
  * Output:
  *     data_.runtime duoc cap nhat.
@@ -632,9 +644,40 @@ void KalmanFilterNode::resetCallback(const std_msgs::msg::String::SharedPtr msg)
             return;
         }
 
+        if (msg->data == "LOST")
+        {
+            if (data_.runtime.initialized &&
+                !data_.runtime.forceZero &&
+                !targetLost_)
+            {
+                targetLost_ = true;
+                lostState_ = kf_.statePost.clone();
+                lostCovariance_ = kf_.errorCovPost.clone();
+                lostStateStamp_ = data_.timing.lastPredictTime;
+
+                KF_WARN(
+                    get_logger(),
+                    "Target LOST -> prediction-only from stamp %.6f",
+                    lostStateStamp_.seconds());
+            }
+
+            return;
+        }
+
         if (msg->data == "ACTIVE")
         {
+            if (targetLost_)
+            {
+                KF_INFO(get_logger(), "Target ACTIVE -> measurement tracking resumed");
+            }
+
+            targetLost_ = false;
+            lostState_.release();
+            lostCovariance_.release();
+            lostStateStamp_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+
             data_.runtime.forceZero = false;
+            return;
         }
     }
     catch (const std::exception &exception)
@@ -703,6 +746,16 @@ void KalmanFilterNode::poseCallback(const geometry_msgs::msg::PoseStamped::Share
                 2000,
                 "poseCallback received non-finite orientation");
             return;
+        }
+
+        if (targetLost_)
+        {
+            targetLost_ = false;
+            lostState_.release();
+            lostCovariance_.release();
+            lostStateStamp_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+
+            KF_INFO(get_logger(), "Target reacquired -> Kalman correction resumed");
         }
 
         rclcpp::Time measurementTimestamp = msg->header.stamp;
@@ -952,31 +1005,10 @@ void KalmanFilterNode::predict(double dt)
 {
     try
     {
-        const double dt2 = dt * dt;
-        const double dt3 = dt2 * dt;
-        const double dt4 = dt3 * dt;
-
-        kf_.transitionMatrix = cv::Mat::eye(stateSize, stateSize, CV_64F);
-        kf_.transitionMatrix.at<double>(0, 3) = dt;
-        kf_.transitionMatrix.at<double>(1, 4) = dt;
-        kf_.transitionMatrix.at<double>(2, 5) = dt;
-
-        kf_.processNoiseCov = cv::Mat::zeros(stateSize, stateSize, CV_64F);
-
-        kf_.processNoiseCov.at<double>(0, 0) = 0.25 * dt4 * data_.config.noise.qAccX;
-        kf_.processNoiseCov.at<double>(0, 3) = 0.5 * dt3 * data_.config.noise.qAccX;
-        kf_.processNoiseCov.at<double>(3, 0) = 0.5 * dt3 * data_.config.noise.qAccX;
-        kf_.processNoiseCov.at<double>(3, 3) = dt2 * data_.config.noise.qAccX;
-
-        kf_.processNoiseCov.at<double>(1, 1) = 0.25 * dt4 * data_.config.noise.qAccY;
-        kf_.processNoiseCov.at<double>(1, 4) = 0.5 * dt3 * data_.config.noise.qAccY;
-        kf_.processNoiseCov.at<double>(4, 1) = 0.5 * dt3 * data_.config.noise.qAccY;
-        kf_.processNoiseCov.at<double>(4, 4) = dt2 * data_.config.noise.qAccY;
-
-        kf_.processNoiseCov.at<double>(2, 2) = 0.25 * dt4 * data_.config.noise.qAccZ;
-        kf_.processNoiseCov.at<double>(2, 5) = 0.5 * dt3 * data_.config.noise.qAccZ;
-        kf_.processNoiseCov.at<double>(5, 2) = 0.5 * dt3 * data_.config.noise.qAccZ;
-        kf_.processNoiseCov.at<double>(5, 5) = dt2 * data_.config.noise.qAccZ;
+        buildPredictionMatrices(
+            dt,
+            kf_.transitionMatrix,
+            kf_.processNoiseCov);
 
         kf_.predict();
         data_.kalman.predictCount++;
@@ -990,6 +1022,150 @@ void KalmanFilterNode::predict(double dt)
     {
         KF_ERROR(get_logger(), "predict failed: unknown exception");
         throw;
+    }
+}
+
+/**
+ * Tao F va Q cho mo hinh constant velocity.
+ * dt luon duoc truyen tu timestamp thuc te.
+ */
+void KalmanFilterNode::buildPredictionMatrices(
+    double dt,
+    cv::Mat &transition,
+    cv::Mat &processNoise) const
+{
+    const double dt2 = dt * dt;
+    const double dt3 = dt2 * dt;
+    const double dt4 = dt3 * dt;
+
+    transition = cv::Mat::eye(stateSize, stateSize, CV_64F);
+    transition.at<double>(0, 3) = dt;
+    transition.at<double>(1, 4) = dt;
+    transition.at<double>(2, 5) = dt;
+
+    processNoise = cv::Mat::zeros(stateSize, stateSize, CV_64F);
+
+    processNoise.at<double>(0, 0) = 0.25 * dt4 * data_.config.noise.qAccX;
+    processNoise.at<double>(0, 3) = 0.5 * dt3 * data_.config.noise.qAccX;
+    processNoise.at<double>(3, 0) = 0.5 * dt3 * data_.config.noise.qAccX;
+    processNoise.at<double>(3, 3) = dt2 * data_.config.noise.qAccX;
+
+    processNoise.at<double>(1, 1) = 0.25 * dt4 * data_.config.noise.qAccY;
+    processNoise.at<double>(1, 4) = 0.5 * dt3 * data_.config.noise.qAccY;
+    processNoise.at<double>(4, 1) = 0.5 * dt3 * data_.config.noise.qAccY;
+    processNoise.at<double>(4, 4) = dt2 * data_.config.noise.qAccY;
+
+    processNoise.at<double>(2, 2) = 0.25 * dt4 * data_.config.noise.qAccZ;
+    processNoise.at<double>(2, 5) = 0.5 * dt3 * data_.config.noise.qAccZ;
+    processNoise.at<double>(5, 2) = 0.5 * dt3 * data_.config.noise.qAccZ;
+    processNoise.at<double>(5, 5) = dt2 * data_.config.noise.qAccZ;
+}
+
+/**
+ * Publish prediction-only trong luc target LOST.
+ * Khong mutate kf_ chinh. Khi ArUco quay lai, filter chinh van predict/correct
+ * tu measurement timestamp cuoi cung nhu truoc day.
+ */
+void KalmanFilterNode::publishLostPrediction(
+    const rclcpp::Time &predictionTimestamp)
+{
+    try
+    {
+        if (!targetLost_ ||
+            !data_.runtime.initialized ||
+            data_.runtime.forceZero ||
+            lostState_.empty() ||
+            lostCovariance_.empty() ||
+            lostStateStamp_.nanoseconds() == 0)
+        {
+            return;
+        }
+
+        const double dt =
+            (predictionTimestamp - lostStateStamp_).seconds();
+
+        if (!std::isfinite(dt) || dt < 0.0)
+        {
+            return;
+        }
+
+        cv::Mat transition;
+        cv::Mat processNoise;
+        buildPredictionMatrices(dt, transition, processNoise);
+
+        const cv::Mat predictedState = transition * lostState_;
+        const cv::Mat predictedCovariance =
+            transition * lostCovariance_ * transition.t() + processNoise;
+
+        const Eigen::Vector3d predictedPosition(
+            predictedState.at<double>(0, 0),
+            predictedState.at<double>(1, 0),
+            predictedState.at<double>(2, 0));
+
+        const Eigen::Vector3d predictedVelocity(
+            predictedState.at<double>(3, 0),
+            predictedState.at<double>(4, 0),
+            predictedState.at<double>(5, 0));
+
+        data_.kalman.estimatedPositionWorld = predictedPosition;
+        data_.kalman.estimatedVelocityWorld = predictedVelocity;
+        data_.kalman.predictDt = dt;
+
+        geometry_msgs::msg::PoseStamped filteredPoseMsg;
+        filteredPoseMsg.header.stamp = predictionTimestamp;
+        filteredPoseMsg.header.frame_id = data_.config.topics.outputFrameId;
+        filteredPoseMsg.pose.position.x = predictedPosition.x();
+        filteredPoseMsg.pose.position.y = predictedPosition.y();
+        filteredPoseMsg.pose.position.z = predictedPosition.z();
+        filteredPoseMsg.pose.orientation.w = data_.targetMeasurement.orientationWorld.w();
+        filteredPoseMsg.pose.orientation.x = data_.targetMeasurement.orientationWorld.x();
+        filteredPoseMsg.pose.orientation.y = data_.targetMeasurement.orientationWorld.y();
+        filteredPoseMsg.pose.orientation.z = data_.targetMeasurement.orientationWorld.z();
+        targetPoseFilteredPub_->publish(filteredPoseMsg);
+
+        geometry_msgs::msg::PoseStamped velocityMsg;
+        velocityMsg.header = filteredPoseMsg.header;
+        velocityMsg.pose.position.x = predictedVelocity.x();
+        velocityMsg.pose.position.y = predictedVelocity.y();
+        velocityMsg.pose.position.z = predictedVelocity.z();
+        velocityMsg.pose.orientation = filteredPoseMsg.pose.orientation;
+        targetRelVelPub_->publish(velocityMsg);
+
+        std_msgs::msg::Float64MultiArray covarianceMsg;
+        covarianceMsg.data.resize(16);
+        const int stateIndex[4] = {0, 1, 3, 4};
+
+        for (int row = 0; row < 4; ++row)
+        {
+            for (int col = 0; col < 4; ++col)
+            {
+                covarianceMsg.data[static_cast<std::size_t>(row * 4 + col)] =
+                    predictedCovariance.at<double>(
+                        stateIndex[row],
+                        stateIndex[col]);
+            }
+        }
+
+        targetCovariancePub_->publish(covarianceMsg);
+
+        KF_DEBUG(
+            get_logger(),
+            "LOST prediction | dt=%.3f pos=(%.3f, %.3f, %.3f) vel=(%.3f, %.3f, %.3f)",
+            dt,
+            predictedPosition.x(),
+            predictedPosition.y(),
+            predictedPosition.z(),
+            predictedVelocity.x(),
+            predictedVelocity.y(),
+            predictedVelocity.z());
+    }
+    catch (const std::exception &exception)
+    {
+        KF_ERROR(get_logger(), "publishLostPrediction failed: %s", exception.what());
+    }
+    catch (...)
+    {
+        KF_ERROR(get_logger(), "publishLostPrediction failed: unknown exception");
     }
 }
 

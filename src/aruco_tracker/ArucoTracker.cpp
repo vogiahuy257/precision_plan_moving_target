@@ -90,8 +90,10 @@ ArucoTrackerNode::ArucoTrackerNode()
         std::bind(&ArucoTrackerNode::camera_info_callback, this, std::placeholders::_1));
 
     _image_pub = create_publisher<sensor_msgs::msg::Image>("/Aruco/image_proc", qos);
-    _target_pose_pub = create_publisher<geometry_msgs::msg::PoseStamped>("/Aruco/target_pose_FRD", qos);
-    _kalman_reset_pub = create_publisher<std_msgs::msg::String>("/Aruco/target_state", qos);
+    _target_pose_pub = create_publisher<geometry_msgs::msg::PoseStamped>("/Aruco/target_pose_optical", qos);
+
+    const auto state_qos = rclcpp::QoS(10).reliable();
+    _kalman_reset_pub = create_publisher<std_msgs::msg::String>("/Aruco/target_state", state_qos);
 
     _debug_dt_pub = create_publisher<std_msgs::msg::String>(
         "/debug_dt/aruco",
@@ -106,10 +108,12 @@ void ArucoTrackerNode::loadParameters()
     declare_parameter<int>("aruco_id", 10);
     declare_parameter<int>("dictionary", 5);
     declare_parameter<double>("marker_size", 0.08);
+    declare_parameter<double>("lost_reset_sec", 5.0);
 
     _param_aruco_id = get_parameter("aruco_id").as_int();
     _param_dictionary = get_parameter("dictionary").as_int();
     _param_marker_size = get_parameter("marker_size").as_double();
+    _param_lost_reset_sec = get_parameter("lost_reset_sec").as_double();
 }
 
 void ArucoTrackerNode::updateMarkerGeometry()
@@ -181,12 +185,19 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
         }
     }
 
-    const rclcpp::Time imageStamp = msg->header.stamp;
+    rclcpp::Time imageStamp = msg->header.stamp;
+    if (imageStamp.nanoseconds() == 0)
+    {
+        imageStamp = now();
+    }
+
     const double imageStampSec = imageStamp.seconds();
+
+    cv::Vec3d target_tvec(0.0, 0.0, 0.0);
 
     if (found && target_index >= 0)
     {
-        cv::Vec3d rvec, tvec;
+        cv::Vec3d rvec;
 
         cv::solvePnP(
             _object_points,
@@ -194,16 +205,20 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
             _camera_matrix,
             _dist_coeffs,
             rvec,
-            tvec);
+            target_tvec);
 
         geometry_msgs::msg::PoseStamped pose_msg;
         pose_msg.header.stamp = msg->header.stamp;
         pose_msg.header.frame_id = msg->header.frame_id;
 
-        Eigen::Vector3d p_cam(tvec[0], tvec[1], tvec[2]);
-        pose_msg.pose.position.x = p_cam.x();
-        pose_msg.pose.position.y = p_cam.y();
-        pose_msg.pose.position.z = p_cam.z();
+        Eigen::Vector3d p_optical(
+            target_tvec[0],
+            target_tvec[1],
+            target_tvec[2]);
+
+        pose_msg.pose.position.x = p_optical.x();
+        pose_msg.pose.position.y = p_optical.y();
+        pose_msg.pose.position.z = p_optical.z();
 
         cv::Mat rot_mat;
         cv::Rodrigues(rvec, rot_mat);
@@ -227,18 +242,45 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
         _target_pose_pub->publish(pose_msg);
 
         _has_valid_pose = true;
+        _target_lost = false;
+        _reset_sent = false;
 
         std_msgs::msg::String state_msg;
         state_msg.data = "ACTIVE";
         _kalman_reset_pub->publish(state_msg);
     }
 
-    if (_has_valid_pose && !found)
+    if (!found)
     {
-        std_msgs::msg::String state_msg;
-        state_msg.data = "RESET";
-        _kalman_reset_pub->publish(state_msg);
-        _has_valid_pose = false;
+        // First missed frame after a valid target: announce LOST once.
+        if (_has_valid_pose)
+        {
+            std_msgs::msg::String state_msg;
+            state_msg.data = "LOST";
+            _kalman_reset_pub->publish(state_msg);
+
+            _has_valid_pose = false;
+            _target_lost = true;
+            _reset_sent = false;
+            _lost_since = imageStamp;
+        }
+
+        // Keep LOST for the requested grace period, then send RESET once.
+        if (_target_lost && !_reset_sent)
+        {
+            const double lost_time_sec =
+                (imageStamp - _lost_since).seconds();
+
+            if (std::isfinite(lost_time_sec) &&
+                lost_time_sec >= _param_lost_reset_sec)
+            {
+                std_msgs::msg::String state_msg;
+                state_msg.data = "RESET";
+                _kalman_reset_pub->publish(state_msg);
+
+                _reset_sent = true;
+            }
+        }
     }
 
     const rclcpp::Time procEnd = now();
@@ -287,9 +329,11 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
                 cv::LINE_AA);
 
             std::ostringstream label;
-            label << "ID:" << ids[target_index]
-                  << " x:" << cx
-                  << " y:" << cy;
+            label << std::fixed << std::setprecision(3)
+                  << "ID:" << ids[target_index]
+                  << " X:" << target_tvec[0]
+                  << " Y:" << target_tvec[1]
+                  << " Z:" << target_tvec[2] << "m";
 
             const std::string text = label.str();
 

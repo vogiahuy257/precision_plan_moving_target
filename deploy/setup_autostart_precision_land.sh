@@ -16,7 +16,6 @@ LEGACY_SERVICES=(
   "microxrce-agent.service"
   "imx219_camera.service"
   "aruco-tracker.service"
-  "kalmanfilter.service"
   "kf.service"
   "ekf.service"
   "target_drop.service"

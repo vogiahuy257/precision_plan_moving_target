@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
 
-    topics.input_target_pose: "/Aruco/target_pose_FRD"
+    topics.input_target_pose: "/Aruco/target_pose_optical"
     topics.reset_command: "/Aruco/target_state"
     topics.vehicle_odometry: "/fmu/out/vehicle_odometry"
     topics.vehicle_local_position: "/fmu/out/vehicle_local_position_v1"
@@ -47,4 +47,4 @@
     # Same fixed belly-camera offset as the current KF.
     transform.camera_offset_x: 0.2
     transform.camera_offset_y: 0.0
-    transform.camera_offset_z: -0.12
+    transform.camera_offset_z: 0.12

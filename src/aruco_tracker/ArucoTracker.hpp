@@ -40,12 +40,16 @@ private:
 	int _param_aruco_id {};
 	int _param_dictionary {};
 	double _param_marker_size {};
+	double _param_lost_reset_sec {5.0};
 	
 	std::vector<cv::Point3f> _object_points;
     void updateMarkerGeometry();
 
 	// Tracking state --- 
 	bool _has_valid_pose = false;
+	bool _target_lost = false;
+	bool _reset_sent = false;
+	rclcpp::Time _lost_since {0, 0, RCL_ROS_TIME};
 
 	Eigen::Quaterniond _q_gimbal = Eigen::Quaterniond::Identity();
 	bool _gimbal_valid = false;
