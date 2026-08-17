@@ -6,7 +6,6 @@
 #include <sstream>
 #include <std_msgs/msg/string.hpp>
 
-constexpr double MARKER_TIMEOUT_SEC = 5.0;
 
 namespace
 {
@@ -228,7 +227,6 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
         _target_pose_pub->publish(pose_msg);
 
         _has_valid_pose = true;
-        _last_seen_time = now();
 
         std_msgs::msg::String state_msg;
         state_msg.data = "ACTIVE";
@@ -237,17 +235,10 @@ void ArucoTrackerNode::image_callback(const sensor_msgs::msg::Image::SharedPtr m
 
     if (_has_valid_pose && !found)
     {
-        const rclcpp::Time currentTime = now();
-        const double dt = (currentTime - _last_seen_time).seconds();
-
-        if (dt > MARKER_TIMEOUT_SEC)
-        {
-            std_msgs::msg::String state_msg;
-            state_msg.data = "RESET";
-            _kalman_reset_pub->publish(state_msg);
-
-            _has_valid_pose = false;
-        }
+        std_msgs::msg::String state_msg;
+        state_msg.data = "RESET";
+        _kalman_reset_pub->publish(state_msg);
+        _has_valid_pose = false;
     }
 
     const rclcpp::Time procEnd = now();

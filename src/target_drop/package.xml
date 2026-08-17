@@ -3,7 +3,7 @@
 <package format="3">
   <name>target_drop</name>
   <version>0.1.1</version>
-  <description>Moving-target tracking controller for UAV payload drop.</description>
+  <description>Predictive optimal-release-point controller for UAV payload drop.</description>
   <maintainer email="jake@arkelectron.com">Jacob Dahl</maintainer>
   <license>BSD-3-Clause</license>
 

@@ -1,0 +1,20 @@
+[Unit]
+Description=CSV Logger ROS2 Node
+After=kf.service
+
+[Service]
+Type=simple
+User=pihuy
+WorkingDirectory=/home/pihuy/precision_plan_moving_target
+ExecStart=/bin/bash /home/pihuy/precision_plan_moving_target/services/run_logger.sh
+Restart=always
+KillSignal=SIGINT
+RestartSec=2
+
+Environment=RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+Environment=RMW_FASTRTPS_USE_SHM=0
+Environment=ROS_DOMAIN_ID=0
+Environment=HOME=/home/pihuy
+
+[Install]
+WantedBy=multi-user.target

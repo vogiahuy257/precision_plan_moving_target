@@ -45,7 +45,7 @@ private:
      *     Khong co.
      *
      * Logic:
-     *     Khai bao nhom topic, frame_id, timeout, debug, noise va transform.
+     *     Khai bao nhom topic, frame_id, debug, noise va transform.
      *
      * Output:
      *     Parameter duoc dang ky de co the override bang yaml.

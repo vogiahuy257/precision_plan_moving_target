@@ -2,7 +2,6 @@
   ros__parameters:
     debug: false
     debug_csv_path: "kalman_logs/"
-    pose_timeout_s: 3.0
 
     topics.input_target_pose: "/Aruco/target_pose_FRD"
     topics.reset_command: "/Aruco/target_state"

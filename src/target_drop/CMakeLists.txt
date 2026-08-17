@@ -39,7 +39,6 @@ target_compile_features(target_drop PUBLIC c_std_99 cxx_std_20)
 install(TARGETS target_drop DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME}/)
 install(DIRECTORY cfg DESTINATION share/${PROJECT_NAME}/)
-install(FILES ESTIMATOR_INTERFACE.md DESTINATION share/${PROJECT_NAME}/)
 
 if(BUILD_TESTING)
     find_package(ament_lint_auto REQUIRED)

@@ -47,7 +47,6 @@ void EKFNode::declareParameters()
     declare_parameter<std::string>("topics.process_noise", "/EKF/process_noise");
 
     declare_parameter<std::string>("frame_id", "map");
-    declare_parameter<double>("pose_timeout_s", 3.0);
 
     declare_parameter<double>("q_acc", 0.20);
     declare_parameter<double>("q_turn_rate", 0.20);
@@ -55,10 +54,7 @@ void EKFNode::declareParameters()
     declare_parameter<double>("r_pos_e", 0.008);
     declare_parameter<double>("nis_threshold", 9.21);
     declare_parameter<double>("turn_rate_epsilon", 0.001);
-    declare_parameter<double>("predict_step_s", 0.02);
 
-    declare_parameter<double>("init.min_dt_s", 0.20);
-    declare_parameter<double>("init.max_dt_s", 1.00);
     declare_parameter<double>("init.min_speed_m_s", 0.10);
     declare_parameter<double>("init.motion_nis_threshold", 9.21);
     declare_parameter<int>("init.window_size", 15);
@@ -87,7 +83,6 @@ void EKFNode::loadParameters()
     get_parameter("topics.covariance", covarianceTopic_);
     get_parameter("topics.process_noise", processNoiseTopic_);
     get_parameter("frame_id", frameId_);
-    get_parameter("pose_timeout_s", poseTimeoutSec_);
 
     get_parameter("q_acc", ekfConfig_.qAcc);
     get_parameter("q_turn_rate", ekfConfig_.qTurnRate);
@@ -95,10 +90,7 @@ void EKFNode::loadParameters()
     get_parameter("r_pos_e", ekfConfig_.rPosE);
     get_parameter("nis_threshold", ekfConfig_.nisThreshold);
     get_parameter("turn_rate_epsilon", ekfConfig_.turnRateEps);
-    get_parameter("predict_step_s", ekfConfig_.predictStepSec);
 
-    get_parameter("init.min_dt_s", initMinDtSec_);
-    get_parameter("init.max_dt_s", initMaxDtSec_);
     get_parameter("init.min_speed_m_s", initMinSpeedMps_);
     get_parameter("init.motion_nis_threshold", initMotionNisThreshold_);
     get_parameter("init.window_size", initWindowSize_);
@@ -129,10 +121,7 @@ void EKFNode::loadParameters()
     get_parameter("transform.camera_offset_y", cameraOffsetBody_.y());
     get_parameter("transform.camera_offset_z", cameraOffsetBody_.z());
 
-    if (!std::isfinite(poseTimeoutSec_) || poseTimeoutSec_ <= 0.0 ||
-        !std::isfinite(initMinDtSec_) || initMinDtSec_ <= 0.0 ||
-        !std::isfinite(initMaxDtSec_) || initMaxDtSec_ <= initMinDtSec_ ||
-        !std::isfinite(initMinSpeedMps_) || initMinSpeedMps_ < 0.0 ||
+    if (!std::isfinite(initMinSpeedMps_) || initMinSpeedMps_ < 0.0 ||
         !std::isfinite(initMotionNisThreshold_) || initMotionNisThreshold_ <= 0.0 ||
         initWindowSize_ < 2 || initWindowSize_ > 60 ||
         !initialCovariance_.allFinite() ||
@@ -322,13 +311,6 @@ void EKFNode::poseCallback(
         return;
     }
 
-    if (dtSec > poseTimeoutSec_)
-    {
-        resetFilter();
-        bootstrapFilter(stamp, rawMeasurementNed_, rawOrientationNed_);
-        return;
-    }
-
     if (dtSec > 1e-9)
     {
         ekf_.predict(dtSec);
@@ -372,19 +354,6 @@ bool EKFNode::bootstrapFilter(
         bootstrapSamples_.pop_front();
     }
 
-    while (bootstrapSamples_.size() >= 2)
-    {
-        const double span =
-            (bootstrapSamples_.back().stamp - bootstrapSamples_.front().stamp).seconds();
-
-        if (span <= initMaxDtSec_)
-        {
-            break;
-        }
-
-        bootstrapSamples_.pop_front();
-    }
-
     if (static_cast<int>(bootstrapSamples_.size()) < initWindowSize_)
     {
         return false;
@@ -394,7 +363,7 @@ bool EKFNode::bootstrapFilter(
     const double spanSec =
         (bootstrapSamples_.back().stamp - t0).seconds();
 
-    if (!std::isfinite(spanSec) || spanSec < initMinDtSec_)
+    if (!std::isfinite(spanSec) || spanSec <= 0.0)
     {
         return false;
     }

@@ -1,95 +1,53 @@
 /**:
   ros__parameters:
-    # =========================
-    # Target estimator interface
-    # =========================
-    # kf  : constant-velocity Kalman filter
-    # ekf : constant-turn-rate-and-acceleration EKF
     estimator:
+      # kf = CV, ekf = CTRA
       model: "kf"
-      motion_timeout_s: 0.20
-      prediction_step_s: 0.02
-
 
     topics:
       target_pose: "/KF/target_pose_est_NED"
       target_velocity: "/KF/target_velocity_est_NED"
-
-      # CV/KF  : 16 values, 4x4 row-major [pN,pE,vN,vE].
-      # CTRA/EKF: 36 values, 6x6 row-major [pN,pE,v,psi,a,omega].
       target_covariance: "/KF/target_covariance_NE"
       target_process_noise: "/KF/process_noise"
-
-      # Only required when estimator.model = ekf.
-      # data[0] = tangential acceleration a [m/s^2]
-      # data[1] = turn rate omega [rad/s]
       target_motion: "/EKF/target_motion"
-
+      target_state: "/Aruco/target_state"
       vehicle_local_position: "/fmu/out/vehicle_local_position_v1"
 
-    # =========================
-    # UAV tracking controller
-    # =========================
-    PID_deadband: 0.08
-    target_timeout: 3.0
-    descent_kp_pid: 1.0
-    descent_ki_pid: 0.0
-    descent_kd_pid: 0.0
-    descent_max_velocity: 100.0
-    slew_acc: 0.88
+    # XY controller tracks the OPTIMAL RELEASE POINT.
+    controller:
+      kp: 0.8
+      ki: 0.02
+      kd: 0.2
+      deadband_m: 0.08
+      max_velocity_m_s: 100.0
+      slew_acc_m_s2: 0.88
 
-    yaw:
-      enabled: true
-      kp: 1.0
-      max_rate_rad_s: 0.4
-      slew_acc_rad_s2: 0.2
-      deadband_rad: 0.03
+    altitude:
+      release_height_m: 2.0
+      tolerance_m: 0.15
+      kp: 0.4
+      slew_acc_m_s2: 0.6
+      descent_gate_radius_m: 0.30
+      descent_min_m_s: 0.30
+      descent_max_m_s: 0.45
 
-    tracking_height: 3.0
-    height_tolerance: 0.15
-    height_kp: 0.6
-    vertical_slew_acc: 0.6
-    descent_gate_radius: 0.30
-    vmin: 0.30
-    vmax: 0.45
+    payload:
+      wind_x_m_s: 0.0
+      wind_y_m_s: 0.0
+      wind_z_m_s: 0.0
+      mass_kg: 0.5
+      cd: 1.0
+      area_m2: 0.01
+      rho_air: 1.225
 
-    use_predictive_error: true
-    prediction_dt_max: 0.8
-    control_extra_lead_sec: 0.25
-    predictive_acc_gain: 0.0
-    predictive_acc_lpf_alpha: 0.4
-    predictive_acc_max: 4.0
+      # Numerical resolution of the quadratic-drag ODE only.
+      # This does NOT delay execution and does NOT cap fall time.
+      integration_step_s: 0.005
 
-    # =========================
-    # Payload model
-    # =========================
-    v_wind_n: 0.0
-    v_wind_e: 0.0
-    v_wind_d: 0.0
-
-    m_payload: 0.5
-    c_d: 1.0
-    area_m2: 0.01
-    rho_air: 1.225
-
-    # Forward Euler.
-    drop_dt: 0.005
-    drop_t_max: 3.0
-
-    # =========================
-    # Release gate
-    # =========================
     release:
-      # Measured command -> physical separation delay.
-      delay_sec: 0.20
-
-      max_error_m: 0.30
+      # Immediate gate: release becomes true as soon as all limits are satisfied.
+      max_error_m: 0.35
       max_sigma_m: 0.20
-      max_relative_velocity_m_s: 0.50
-      max_target_age_s: 0.20
-      confirm_cycles: 5
-      cov_timeout_s: 0.20
 
-      # Payload impact uncertainty from calibration drops.
-      payload_sigma_n_m: 0.0
-      payload_sigma_e_m: 0.0
+      payload_sigma_x_m: 0.0
+      payload_sigma_y_m: 0.0

@@ -45,7 +45,6 @@ private:
     void updateMarkerGeometry();
 
 	// Tracking state --- 
-	rclcpp::Time _last_seen_time;
 	bool _has_valid_pose = false;
 
 	Eigen::Quaterniond _q_gimbal = Eigen::Quaterniond::Identity();

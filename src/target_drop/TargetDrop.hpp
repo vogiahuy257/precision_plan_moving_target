@@ -13,11 +13,12 @@
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <px4_ros2/components/mode.hpp>
 #include <px4_ros2/control/setpoint_types/experimental/trajectory.hpp>
-#include <px4_ros2/odometry/attitude.hpp>
 #include <px4_ros2/odometry/local_position.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 class TargetDrop : public px4_ros2::ModeBase
 {
@@ -41,94 +42,50 @@ private:
         Ctra
     };
 
-    struct TargetWorldData
+    struct TargetData
     {
         Eigen::Vector3d position{0.0, 0.0, 0.0};
         Eigen::Vector3d velocity{0.0, 0.0, 0.0};
 
-        rclcpp::Time timestamp{0, 0, RCL_ROS_TIME};
-        rclcpp::Time velocityTimestamp{0, 0, RCL_ROS_TIME};
-        rclcpp::Time motionTimestamp{0, 0, RCL_ROS_TIME};
+        rclcpp::Time poseTime{0, 0, RCL_ROS_TIME};
+        rclcpp::Time velocityTime{0, 0, RCL_ROS_TIME};
 
-        float yawRad{0.0f};
+        float headingRad{0.0f};
         float tangentialAccMps2{0.0f};
         float turnRateRadS{0.0f};
 
-        bool validPose{false};
-        bool validVelocity{false};
-        bool validYaw{false};
-        bool validMotion{false};
+        bool active{false};
+        bool poseValid{false};
+        bool velocityValid{false};
+        bool headingValid{false};
+        bool motionValid{false};
     };
 
-    struct TargetState
-    {
-        Eigen::Vector3f positionWorld{0.0f, 0.0f, 0.0f};
-        Eigen::Vector3f velocityWorld{0.0f, 0.0f, 0.0f};
-        bool hasVelocity{false};
-    };
-
-    struct TargetCovData
+    struct TargetCovariance
     {
         Eigen::Matrix4f cv{Eigen::Matrix4f::Zero()};
         DropPred::Matrix6f ctra{DropPred::Matrix6f::Zero()};
-        rclcpp::Time timestamp{0, 0, RCL_ROS_TIME};
         bool valid{false};
     };
 
-    struct TargetNoiseData
+    struct TargetNoise
     {
         float primary{0.0f};
         float secondary{0.0f};
         bool valid{false};
     };
 
-    struct VehicleState
+    struct ReleasePlan
     {
-        Eigen::Vector3f positionWorld{0.0f, 0.0f, 0.0f};
-        Eigen::Vector3f velocityWorld{0.0f, 0.0f, 0.0f};
-        Eigen::Vector2f accelerationXY{0.0f, 0.0f};
-    };
+        Eigen::Vector2f desiredReleaseXY{0.0f, 0.0f};
+        Eigen::Vector2f errorXY{0.0f, 0.0f};
+        Eigen::Vector2f feedforwardVelocityXY{0.0f, 0.0f};
+        Eigen::Matrix2f covarianceXY{Eigen::Matrix2f::Zero()};
 
-    struct PredictionInput
-    {
-        TargetState target{};
-        VehicleState vehicle{};
-        float leadDtSec{0.0f};
-        float predictiveAccGain{0.0f};
-    };
-
-    struct PredictionOutput
-    {
-        Eigen::Vector3f targetFutureWorld{0.0f, 0.0f, 0.0f};
-        Eigen::Vector3f vehicleFutureWorld{0.0f, 0.0f, 0.0f};
-        Eigen::Vector2f futureErrorXY{0.0f, 0.0f};
-    };
-
-    struct XYControllerInput
-    {
-        Eigen::Vector2f futureErrorXY{0.0f, 0.0f};
-        Eigen::Vector2f targetVelocityXY{0.0f, 0.0f};
-        bool useTargetFeedforward{false};
-        bool targetValid{false};
-        float dtSec{0.0f};
-    };
-
-    struct XYControllerOutput
-    {
-        Eigen::Vector2f velocitySpXY{0.0f, 0.0f};
-        Eigen::Vector2f feedbackXY{0.0f, 0.0f};
-        Eigen::Vector2f commandRawXY{0.0f, 0.0f};
-    };
-
-    struct YawControllerOutput
-    {
+        // Exact elapsed time from the estimator measurement timestamp
+        // to the current control calculation. This is measured, never clamped.
+        float measurementDtSec{0.0f};
         bool valid{false};
-        float currentYawRad{0.0f};
-        float targetYawRad{0.0f};
-        float errorYawRad{0.0f};
-        float yawRateRawRadS{0.0f};
-        float yawRateSpRadS{0.0f};
-        int yawTurnDirection{0};
     };
 
     void loadParameters();
@@ -139,49 +96,39 @@ private:
     void targetMotionCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
     void targetCovarianceCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
     void targetProcessNoiseCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    void targetStateCallback(const std_msgs::msg::String::SharedPtr msg);
     void vehicleLocalPositionCallback(const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg);
 
-    void handleSearchState(bool targetLost);
-    void handleTrackState(float dtSec, bool targetLost);
+    void handleSearch();
+    void handleTrack(float dtSec);
+    void switchState(State state);
 
-    void resetXyController();
-    void resetYawController();
-    void resetZController();
+    ReleasePlan buildReleasePlan(const rclcpp::Time &controlTime) const;
+    DropPred::TargetOutput predictTarget(float predictionTimeSec) const;
+    DropPred::DropOutput predictPayload(float releaseHeightM) const;
 
-    bool checkTargetTimeout() const;
-    void switchToState(State state);
-
-    float computeLeadTimeSec(float dtSec, const rclcpp::Time &controlTime) const;
-    PredictionInput buildPredictionInput(float dtSec, const rclcpp::Time &controlTime);
-    PredictionOutput predictTarget(const PredictionInput &input) const;
-
-    Eigen::Vector2f estimateVehicleAccelerationXY(float dtSec);
-    Eigen::Vector2f clampVectorNorm(const Eigen::Vector2f &value, float maxNorm) const;
-
-    XYControllerOutput updateXyController(const XYControllerInput &input);
-    YawControllerOutput updateYawController(float dtSec, float targetYawRad, bool targetYawValid);
-
-    float computeZVelocityCommand(
-        float distanceBottom,
-        const Eigen::Vector2f &futureErrorXY,
+    Eigen::Vector2f updateXyController(
+        const Eigen::Vector2f &releaseErrorXY,
+        const Eigen::Vector2f &feedforwardVelocityXY,
         float dtSec);
 
-    bool dropHeightReady() const;
-    void updateDropPrediction();
-    DropPred::TargetOutput predictReleaseTarget(float predictionTimeSec) const;
-    void updateReleaseGate(const rclcpp::Time &controlTime);
+    float updateZController(
+        float distanceBottom,
+        const Eigen::Vector2f &releaseErrorXY,
+        float dtSec);
+
+    void updateReleaseGate(const ReleasePlan &plan);
+    void resetControllers();
     void resetReleaseGate();
 
-    float applySlew(float commandVelocity, float previousVelocity, float accelLimit, float dtSec) const;
-    float applyYawSlew(float commandYawRate, float previousYawRate, float slewLimit, float dtSec) const;
-    float normalizeAnglePi(float angleRad) const;
-    float yawFromPose(const geometry_msgs::msg::Pose &pose) const;
+    Eigen::Vector2f clampNorm(const Eigen::Vector2f &value, float maxNorm) const;
+    float applySlew(float command, float previous, float accelLimit, float dtSec) const;
+    float headingFromPose(const geometry_msgs::msg::Pose &pose) const;
 
 private:
     rclcpp::Node &_node;
 
     std::shared_ptr<px4_ros2::TrajectorySetpointType> _trajectorySetpoint;
-    std::shared_ptr<px4_ros2::OdometryAttitude> _vehicleAttitude;
     std::shared_ptr<px4_ros2::OdometryLocalPosition> _vehicleLocalPosition;
 
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr _targetPoseSub;
@@ -189,99 +136,68 @@ private:
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr _targetMotionSub;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr _targetCovarianceSub;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr _targetProcessNoiseSub;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr _targetStateSub;
     rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr _vehicleLocalPositionSub;
+
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr _loggerEnablePub;
 
     std::string _targetPoseTopic;
     std::string _targetVelocityTopic;
     std::string _targetMotionTopic;
     std::string _targetCovarianceTopic;
     std::string _targetProcessNoiseTopic;
+    std::string _targetStateTopic;
     std::string _vehicleLocalPositionTopic;
 
     TargetModel _targetModel{TargetModel::Cv};
-    std::string _paramTargetModel{"cv"};
-    float _paramEstimatorMotionTimeoutSec{0.20f};
-    float _paramEstimatorPredictionStepSec{0.02f};
+    std::string _paramTargetModel{"kf"};
 
-    float _paramPidDeadband{0.05f};
-    float _paramTargetTimeout{3.0f};
+    float _paramKp{1.0f};
+    float _paramKi{0.0f};
+    float _paramKd{0.0f};
+    float _paramDeadbandM{0.08f};
+    float _paramMaxVelocityMps{10.0f};
+    float _paramSlewAccMps2{0.88f};
 
-    float _paramTrackingKp{0.9f};
-    float _paramTrackingKi{0.01f};
-    float _paramTrackingKd{0.0f};
-    float _paramTrackingMaxVelocity{10.0f};
-    float _paramSlewAcc{10.0f};
-
-    bool _paramYawControlEnabled{true};
-    float _paramYawKp{1.5f};
-    float _paramYawMaxRateRadS{0.8f};
-    float _paramYawSlewAccRadS2{1.2f};
-    float _paramYawDeadbandRad{0.03f};
-
-    float _paramTrackingHeight{3.0f};
-    float _paramHeightTolerance{0.15f};
+    float _paramReleaseHeightM{3.0f};
+    float _paramHeightToleranceM{0.15f};
     float _paramHeightKp{0.6f};
-    float _paramVerticalSlewAcc{0.6f};
-    float _paramDescentGateRadius{0.3f};
-    float _paramVmin{0.3f};
-    float _paramVmax{0.45f};
+    float _paramVerticalSlewAccMps2{0.6f};
+    float _paramDescentGateRadiusM{0.30f};
+    float _paramDescentMinMps{0.30f};
+    float _paramDescentMaxMps{0.45f};
 
-    bool _paramUsePredictiveError{true};
-    float _paramPredictionDtMax{0.75f};
-    float _paramControlExtraLeadSec{0.25f};
-    float _paramPredictiveAccGain{0.0f};
-    float _paramPredictiveAccLpfAlpha{0.4f};
-    float _paramPredictiveAccMax{4.0f};
-
-    float _paramVWindN{0.0f};
-    float _paramVWindE{0.0f};
-    float _paramVWindD{0.0f};
-
+    Eigen::Vector3f _paramWindXyz{0.0f, 0.0f, 0.0f};
     float _paramPayloadMassKg{0.5f};
     float _paramCd{1.0f};
     float _paramAreaM2{0.01f};
     float _paramRhoAir{1.225f};
-    float _paramDropDtSec{0.005f};
-    float _paramDropMaxTimeSec{3.0f};
 
-    float _paramReleaseDelaySec{0.20f};
+    // Numerical integration resolution for the nonlinear drag ODE.
+    // This is not a runtime delay or timeout.
+    float _paramDropIntegrationStepSec{0.005f};
+
     float _paramReleaseMaxErrorM{0.30f};
     float _paramReleaseMaxSigmaM{0.20f};
-    float _paramReleaseMaxRelativeVelocityMps{0.50f};
-    float _paramReleaseMaxTargetAgeSec{0.20f};
-    float _paramReleaseCovTimeoutSec{0.20f};
-    float _paramPayloadSigmaN{0.0f};
-    float _paramPayloadSigmaE{0.0f};
-    int _paramReleaseConfirmCycles{5};
+    float _paramPayloadSigmaX{0.0f};
+    float _paramPayloadSigmaY{0.0f};
 
     DropPred _dropPred{};
-    DropPred::DropOutput _dropOutput{};
     DropGate _dropGate{};
     DropGate::Output _gateOutput{};
 
     State _state{State::Search};
-    TargetWorldData _targetWorld{};
-    TargetCovData _targetCov{};
-    TargetNoiseData _targetNoise{};
+    TargetData _target{};
+    TargetCovariance _targetCov{};
+    TargetNoise _targetNoise{};
 
     bool _active{false};
     bool _distBottomValid{false};
     float _distBottom{0.0f};
 
-    float _prevVehicleVelX{0.0f};
-    float _prevVehicleVelY{0.0f};
-    float _vehicleAccXFilt{0.0f};
-    float _vehicleAccYFilt{0.0f};
-    bool _prevVehicleVelValid{false};
-
-    float _velXIntegral{0.0f};
-    float _velYIntegral{0.0f};
-    float _prevErrX{0.0f};
-    float _prevErrY{0.0f};
-    bool _prevErrValid{false};
-    float _vxFilt{0.0f};
-    float _vyFilt{0.0f};
-    float _vzFilt{0.0f};
-
-    float _yawRateSpRadS{0.0f};
+    Eigen::Vector2f _integralXY{0.0f, 0.0f};
+    Eigen::Vector2f _previousErrorXY{0.0f, 0.0f};
+    Eigen::Vector2f _velocitySetpointXY{0.0f, 0.0f};
+    float _verticalVelocitySetpoint{0.0f};
+    bool _previousErrorValid{false};
 };

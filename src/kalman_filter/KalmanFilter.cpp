@@ -119,11 +119,10 @@ KalmanFilterNode::KalmanFilterNode()
 
         KF_INFO(
             get_logger(),
-            "Params loaded | node=%s debug=%s csv=%s timeout=%.2f input_pose=%s odom=%s local_pos=%s out_raw=%s out_filtered=%s out_vel=%s",
+            "Params loaded | node=%s debug=%s csv=%s input_pose=%s odom=%s local_pos=%s out_raw=%s out_filtered=%s out_vel=%s",
             this->get_name(),
             data_.config.debug.enabled ? "true" : "false",
             data_.config.debug.csvPath.c_str(),
-            data_.config.poseTimeoutSec,
             data_.config.topics.inputTargetPoseTopic.c_str(),
             data_.config.topics.vehicleOdometryTopic.c_str(),
             data_.config.topics.vehicleLocalPositionTopic.c_str(),
@@ -157,7 +156,7 @@ KalmanFilterNode::KalmanFilterNode()
  *     Khong co.
  *
  * Logic:
- *     Khai bao nhom topic, frame_id, timeout, debug, noise va transform.
+ *     Khai bao nhom topic, frame_id, debug, noise va transform.
  *
  * Output:
  *     Parameter duoc dang ky de co the override bang yaml.
@@ -177,7 +176,6 @@ void KalmanFilterNode::declareParameters()
         declare_parameter<std::string>("topics.process_noise", "/KF/process_noise");
 
         declare_parameter<std::string>("frame_id", "map");
-        declare_parameter<double>("pose_timeout_s", 3.0);
 
         declare_parameter<bool>("debug", false);
         declare_parameter<std::string>("debug_csv_path", "kalman_logs/");
@@ -239,7 +237,6 @@ void KalmanFilterNode::loadParameters()
         get_parameter("topics.covariance", data_.config.topics.covarianceTopic);
         get_parameter("topics.process_noise", data_.config.topics.processNoiseTopic);
 
-        get_parameter("pose_timeout_s", data_.config.poseTimeoutSec);
         get_parameter("frame_id", data_.config.topics.outputFrameId);
 
         get_parameter("debug", data_.config.debug.enabled);

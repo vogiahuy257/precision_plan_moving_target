@@ -68,7 +68,6 @@ struct NodeConfig
     NoiseConfig noise{};
     DebugConfig debug{};
     TransformConfig transform{};
-    double poseTimeoutSec{3.0};
 };
 
 struct RuntimeFlags

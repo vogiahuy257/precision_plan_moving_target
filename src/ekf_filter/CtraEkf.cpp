@@ -29,8 +29,7 @@ void CtraEkf::setConfig(const Config &config)
         !std::isfinite(config.rPosN) || config.rPosN <= 0.0 ||
         !std::isfinite(config.rPosE) || config.rPosE <= 0.0 ||
         !std::isfinite(config.nisThreshold) || config.nisThreshold <= 0.0 ||
-        !std::isfinite(config.turnRateEps) || config.turnRateEps <= 0.0 ||
-        !std::isfinite(config.predictStepSec) || config.predictStepSec <= 0.0)
+        !std::isfinite(config.turnRateEps) || config.turnRateEps <= 0.0)
     {
         throw std::runtime_error("Invalid CTRA EKF configuration");
     }
@@ -86,13 +85,9 @@ void CtraEkf::predict(double dtSec)
         return;
     }
 
-    double remaining = dtSec;
-    while (remaining > 1e-9)
-    {
-        const double dt = std::min(config_.predictStepSec, remaining);
-        predictSingleStep(dt);
-        remaining -= dt;
-    }
+    // Propagate once with the exact timestamp-derived interval.
+    // The CTRA state transition is analytic, so there is no fixed predict step.
+    predictSingleStep(dtSec);
 }
 
 void CtraEkf::predictSingleStep(double dtSec)
@@ -189,7 +184,7 @@ CtraEkf::Vector6d CtraEkf::transition(
     const double psi = state(3);
     const double acc = state(4);
     const double omega = state(5);
-    const double dt = std::max(dtSec, 0.0);
+    const double dt = dtSec;
 
     if (std::abs(omega) > config_.turnRateEps)
     {
@@ -232,7 +227,7 @@ CtraEkf::Matrix6d CtraEkf::transitionJacobian(
     const double psi = state(3);
     const double acc = state(4);
     const double omega = state(5);
-    const double dt = std::max(dtSec, 0.0);
+    const double dt = dtSec;
 
     Matrix6d F = Matrix6d::Identity();
     F(2, 4) = dt;
@@ -317,7 +312,7 @@ CtraEkf::Matrix6d CtraEkf::transitionJacobian(
 CtraEkf::Matrix6d CtraEkf::processNoise(double dtSec) const
 {
     Matrix6d Q = Matrix6d::Zero();
-    const double dt = std::max(dtSec, 0.0);
+    const double dt = dtSec;
 
     // Paper model: a and omega are slowly varying random walks.
     Q(4, 4) = config_.qAcc * dt;

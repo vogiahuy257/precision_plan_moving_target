@@ -20,6 +20,7 @@ LEGACY_SERVICES=(
   "kf.service"
   "ekf.service"
   "target_drop.service"
+  "logger.service"
 )
 
 SERVICES=(
@@ -29,6 +30,7 @@ SERVICES=(
   "kf.service"
   "ekf.service"
   "target_drop.service"
+  "logger.service"
 )
 
 echo "[INFO] Checking service scripts permissions..."

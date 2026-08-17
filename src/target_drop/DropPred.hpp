@@ -10,25 +10,24 @@ public:
 
     struct CvInput
     {
-        Eigen::Vector2f positionNE{0.0f, 0.0f};
-        Eigen::Vector2f velocityNE{0.0f, 0.0f};
+        Eigen::Vector2f positionXY{0.0f, 0.0f};
+        Eigen::Vector2f velocityXY{0.0f, 0.0f};
         Eigen::Matrix4f covariance{Eigen::Matrix4f::Zero()};
         float predictionTimeSec{0.0f};
-        float qAccN{0.0f};
-        float qAccE{0.0f};
+        float qAccX{0.0f};
+        float qAccY{0.0f};
         bool valid{false};
     };
 
     struct CtraInput
     {
-        Eigen::Vector2f positionNE{0.0f, 0.0f};
+        Eigen::Vector2f positionXY{0.0f, 0.0f};
         float speedMps{0.0f};
         float headingRad{0.0f};
         float tangentialAccMps2{0.0f};
         float turnRateRadS{0.0f};
         Matrix6f covariance{Matrix6f::Zero()};
         float predictionTimeSec{0.0f};
-        float stepSec{0.02f};
         float qAcc{0.0f};
         float qTurnRate{0.0f};
         bool valid{false};
@@ -36,9 +35,9 @@ public:
 
     struct TargetOutput
     {
-        Eigen::Vector2f positionNE{0.0f, 0.0f};
-        Eigen::Vector2f velocityNE{0.0f, 0.0f};
-        Eigen::Matrix2f covarianceNE{Eigen::Matrix2f::Zero()};
+        Eigen::Vector2f positionXY{0.0f, 0.0f};
+        Eigen::Vector2f velocityXY{0.0f, 0.0f};
+        Eigen::Matrix2f covarianceXY{Eigen::Matrix2f::Zero()};
         float predictionTimeSec{0.0f};
         bool valid{false};
     };
@@ -46,14 +45,16 @@ public:
     struct DropInput
     {
         Eigen::Vector3f velocityNed{0.0f, 0.0f, 0.0f};
-        Eigen::Vector3f vWindNed{0.0f, 0.0f, 0.0f};
+        Eigen::Vector3f vWindXyz{0.0f, 0.0f, 0.0f};
         float heightM{0.0f};
         float massKg{0.0f};
         float cd{0.0f};
         float areaM2{0.0f};
         float rhoAir{0.0f};
-        float dtSec{0.0f};
-        float maxTimeSec{0.0f};
+
+        // Numerical integration resolution of the nonlinear payload ODE.
+        // It is not a delay/timeout and does not cap the predicted fall time.
+        float integrationStepSec{0.005f};
         bool valid{false};
     };
 

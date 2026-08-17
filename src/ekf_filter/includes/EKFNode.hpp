@@ -71,10 +71,6 @@ private:
 
     // Filter parameters.
     CtraEkf::Config ekfConfig_{};
-    double poseTimeoutSec_{3.0};
-
-    double initMinDtSec_{0.20};
-    double initMaxDtSec_{1.00};
     double initMinSpeedMps_{0.10};
     double initMotionNisThreshold_{9.21};
     int initWindowSize_{15};

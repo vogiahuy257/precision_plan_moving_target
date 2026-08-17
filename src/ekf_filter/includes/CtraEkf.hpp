@@ -19,7 +19,6 @@ public:
         double rPosE{0.008};
         double nisThreshold{9.21};
         double turnRateEps{1e-3};
-        double predictStepSec{0.02};
     };
 
     struct UpdateResult

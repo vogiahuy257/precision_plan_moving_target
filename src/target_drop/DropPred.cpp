@@ -15,54 +15,54 @@ DropPred::TargetOutput DropPred::predictCv(const CvInput &input) const
     TargetOutput output{};
 
     if (!input.valid ||
-        !input.positionNE.allFinite() ||
-        !input.velocityNE.allFinite() ||
+        !input.positionXY.allFinite() ||
+        !input.velocityXY.allFinite() ||
         !input.covariance.allFinite() ||
         !std::isfinite(input.predictionTimeSec) ||
-        !std::isfinite(input.qAccN) ||
-        !std::isfinite(input.qAccE) ||
-        input.qAccN < 0.0f ||
-        input.qAccE < 0.0f)
+        !std::isfinite(input.qAccX) ||
+        !std::isfinite(input.qAccY) ||
+        input.predictionTimeSec < 0.0f ||
+        input.qAccX < 0.0f ||
+        input.qAccY < 0.0f)
     {
         return output;
     }
 
-    const float t = std::max(input.predictionTimeSec, 0.0f);
+    const float t = input.predictionTimeSec;
 
     Eigen::Matrix4f transition = Eigen::Matrix4f::Identity();
     transition(0, 2) = t;
     transition(1, 3) = t;
 
-    // Match the discrete acceleration-noise model used by the uploaded KF:
-    // Q_axis = q * [[0.25 t^4, 0.5 t^3], [0.5 t^3, t^2]].
     Eigen::Matrix4f processNoise = Eigen::Matrix4f::Zero();
     const float t2 = t * t;
     const float t3 = t2 * t;
     const float t4 = t2 * t2;
 
-    processNoise(0, 0) = 0.25f * input.qAccN * t4;
-    processNoise(0, 2) = 0.5f * input.qAccN * t3;
+    processNoise(0, 0) = 0.25f * input.qAccX * t4;
+    processNoise(0, 2) = 0.5f * input.qAccX * t3;
     processNoise(2, 0) = processNoise(0, 2);
-    processNoise(2, 2) = input.qAccN * t2;
+    processNoise(2, 2) = input.qAccX * t2;
 
-    processNoise(1, 1) = 0.25f * input.qAccE * t4;
-    processNoise(1, 3) = 0.5f * input.qAccE * t3;
+    processNoise(1, 1) = 0.25f * input.qAccY * t4;
+    processNoise(1, 3) = 0.5f * input.qAccY * t3;
     processNoise(3, 1) = processNoise(1, 3);
-    processNoise(3, 3) = input.qAccE * t2;
+    processNoise(3, 3) = input.qAccY * t2;
 
     const Eigen::Matrix4f predictedCovariance =
         transition * input.covariance * transition.transpose() + processNoise;
 
-    output.positionNE = input.positionNE + input.velocityNE * t;
-    output.velocityNE = input.velocityNE;
-    output.covarianceNE =
+    output.positionXY = input.positionXY + input.velocityXY * t;
+    output.velocityXY = input.velocityXY;
+    output.covarianceXY =
         0.5f * (predictedCovariance.topLeftCorner<2, 2>() +
                 predictedCovariance.topLeftCorner<2, 2>().transpose());
     output.predictionTimeSec = t;
     output.valid =
-        output.positionNE.allFinite() &&
-        output.velocityNE.allFinite() &&
-        output.covarianceNE.allFinite();
+        output.positionXY.allFinite() &&
+        output.velocityXY.allFinite() &&
+        output.covarianceXY.allFinite();
+
     return output;
 }
 
@@ -70,13 +70,19 @@ DropPred::Vector6f DropPred::ctraStep(const Vector6f &state, float dtSec) const
 {
     Vector6f next = state;
 
-    const float pN = state(0);
-    const float pE = state(1);
+    if (!std::isfinite(dtSec) || dtSec < 0.0f)
+    {
+        next.setConstant(NAN);
+        return next;
+    }
+
+    const float pX = state(0);
+    const float pY = state(1);
     const float speed = state(2);
     const float heading = state(3);
     const float tangentialAcc = state(4);
     const float turnRate = state(5);
-    const float dt = std::max(dtSec, 0.0f);
+    const float dt = dtSec;
 
     if (std::abs(turnRate) > kTurnRateEps)
     {
@@ -84,14 +90,14 @@ DropPred::Vector6f DropPred::ctraStep(const Vector6f &state, float dtSec) const
         const float turnRate2 = turnRate * turnRate;
 
         next(0) =
-            pN +
+            pX +
             speed / turnRate * (std::sin(theta) - std::sin(heading)) +
             tangentialAcc *
                 (dt * std::sin(theta) / turnRate +
                  (std::cos(theta) - std::cos(heading)) / turnRate2);
 
         next(1) =
-            pE +
+            pY +
             speed / turnRate * (std::cos(heading) - std::cos(theta)) +
             tangentialAcc *
                 (-dt * std::cos(theta) / turnRate +
@@ -102,8 +108,8 @@ DropPred::Vector6f DropPred::ctraStep(const Vector6f &state, float dtSec) const
         const float distance =
             speed * dt + 0.5f * tangentialAcc * dt * dt;
 
-        next(0) = pN + distance * std::cos(heading);
-        next(1) = pE + distance * std::sin(heading);
+        next(0) = pX + distance * std::cos(heading);
+        next(1) = pY + distance * std::sin(heading);
     }
 
     next(2) = speed + tangentialAcc * dt;
@@ -118,6 +124,7 @@ DropPred::Matrix6f DropPred::ctraJacobian(
     float dtSec) const
 {
     Matrix6f jacobian = Matrix6f::Zero();
+
     const std::array<float, 6> epsilon{
         1e-3f,
         1e-3f,
@@ -150,17 +157,16 @@ DropPred::TargetOutput DropPred::predictCtra(const CtraInput &input) const
     TargetOutput output{};
 
     if (!input.valid ||
-        !input.positionNE.allFinite() ||
+        !input.positionXY.allFinite() ||
         !input.covariance.allFinite() ||
         !std::isfinite(input.speedMps) ||
         !std::isfinite(input.headingRad) ||
         !std::isfinite(input.tangentialAccMps2) ||
         !std::isfinite(input.turnRateRadS) ||
         !std::isfinite(input.predictionTimeSec) ||
-        !std::isfinite(input.stepSec) ||
         !std::isfinite(input.qAcc) ||
         !std::isfinite(input.qTurnRate) ||
-        input.stepSec <= 0.0f ||
+        input.predictionTimeSec < 0.0f ||
         input.qAcc < 0.0f ||
         input.qTurnRate < 0.0f)
     {
@@ -169,52 +175,45 @@ DropPred::TargetOutput DropPred::predictCtra(const CtraInput &input) const
 
     Vector6f state;
     state <<
-        input.positionNE.x(),
-        input.positionNE.y(),
+        input.positionXY.x(),
+        input.positionXY.y(),
         input.speedMps,
         normalizeAngle(input.headingRad),
         input.tangentialAccMps2,
         input.turnRateRadS;
 
+    const float dt = input.predictionTimeSec;
+
+    // CTRA state transition is analytic, so propagate once using the exact
+    // measured prediction interval. There is no fixed prediction sub-step.
+    const Matrix6f transition = ctraJacobian(state, dt);
+
+    Matrix6f processNoise = Matrix6f::Zero();
+    processNoise(4, 4) = input.qAcc * dt;
+    processNoise(5, 5) = input.qTurnRate * dt;
+
     Matrix6f covariance =
-        0.5f * (input.covariance + input.covariance.transpose());
+        transition * input.covariance * transition.transpose() + processNoise;
+    state = ctraStep(state, dt);
 
-    const float predictionTime = std::max(input.predictionTimeSec, 0.0f);
-    float propagatedTime = 0.0f;
-
-    while (propagatedTime < predictionTime)
+    if (!state.allFinite() || !covariance.allFinite())
     {
-        const float dt =
-            std::min(input.stepSec, predictionTime - propagatedTime);
-
-        const Matrix6f transition = ctraJacobian(state, dt);
-        Matrix6f processNoise = Matrix6f::Zero();
-        processNoise(4, 4) = input.qAcc * dt;
-        processNoise(5, 5) = input.qTurnRate * dt;
-
-        covariance =
-            transition * covariance * transition.transpose() + processNoise;
-        state = ctraStep(state, dt);
-        propagatedTime += dt;
-
-        if (!state.allFinite() || !covariance.allFinite())
-        {
-            return output;
-        }
+        return output;
     }
 
-    output.positionNE = state.head<2>();
-    output.velocityNE = Eigen::Vector2f(
+    output.positionXY = state.head<2>();
+    output.velocityXY = Eigen::Vector2f(
         state(2) * std::cos(state(3)),
         state(2) * std::sin(state(3)));
-    output.covarianceNE =
+    output.covarianceXY =
         0.5f * (covariance.topLeftCorner<2, 2>() +
                 covariance.topLeftCorner<2, 2>().transpose());
-    output.predictionTimeSec = predictionTime;
+    output.predictionTimeSec = dt;
     output.valid =
-        output.positionNE.allFinite() &&
-        output.velocityNE.allFinite() &&
-        output.covarianceNE.allFinite();
+        output.positionXY.allFinite() &&
+        output.velocityXY.allFinite() &&
+        output.covarianceXY.allFinite();
+
     return output;
 }
 
@@ -222,7 +221,7 @@ Eigen::Vector3f DropPred::dropAcceleration(
     const Eigen::Vector3f &velocityNed,
     const DropInput &input) const
 {
-    const Eigen::Vector3f vRel = velocityNed - input.vWindNed;
+    const Eigen::Vector3f vRel = velocityNed - input.vWindXyz;
     const float dragK =
         0.5f * input.rhoAir * input.cd * input.areaM2 / input.massKg;
 
@@ -237,21 +236,19 @@ DropPred::DropOutput DropPred::predictDrop(const DropInput &input) const
 
     if (!input.valid ||
         !input.velocityNed.allFinite() ||
-        !input.vWindNed.allFinite() ||
+        !input.vWindXyz.allFinite() ||
         !std::isfinite(input.heightM) ||
         !std::isfinite(input.massKg) ||
         !std::isfinite(input.cd) ||
         !std::isfinite(input.areaM2) ||
         !std::isfinite(input.rhoAir) ||
-        !std::isfinite(input.dtSec) ||
-        !std::isfinite(input.maxTimeSec) ||
+        !std::isfinite(input.integrationStepSec) ||
         input.heightM <= 0.0f ||
         input.massKg <= 0.0f ||
         input.cd < 0.0f ||
         input.areaM2 < 0.0f ||
         input.rhoAir <= 0.0f ||
-        input.dtSec <= 0.0f ||
-        input.maxTimeSec <= 0.0f)
+        input.integrationStepSec <= 0.0f)
     {
         return output;
     }
@@ -260,19 +257,20 @@ DropPred::DropOutput DropPred::predictDrop(const DropInput &input) const
     Eigen::Vector3f velocity = input.velocityNed;
     float timeSec = 0.0f;
 
-    while (timeSec < input.maxTimeSec)
+    // No max-fall-time gate. Integrate until the payload reaches the ground.
+    while (position.z() < input.heightM)
     {
         const Eigen::Vector3f prevPosition = position;
         const Eigen::Vector3f prevVelocity = velocity;
         const float prevTimeSec = timeSec;
-        const float dt = std::min(input.dtSec, input.maxTimeSec - timeSec);
+        const float dt = input.integrationStepSec;
 
         const Eigen::Vector3f accel = dropAcceleration(velocity, input);
         position += velocity * dt;
         velocity += accel * dt;
         timeSec += dt;
 
-        if (!position.allFinite() || !velocity.allFinite())
+        if (!position.allFinite() || !velocity.allFinite() || !std::isfinite(timeSec))
         {
             return output;
         }
@@ -297,6 +295,7 @@ DropPred::DropOutput DropPred::predictDrop(const DropInput &input) const
                 output.impactOffsetNed.allFinite() &&
                 output.impactVelocityNed.allFinite() &&
                 std::isfinite(output.impactTimeSec);
+
             return output;
         }
     }
